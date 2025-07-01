@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cloudinary Backup</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <main class="container">
+      <h1>Cloudinary Backup Tool</h1>
+      <p>Backup your high-resolution photos and metadata from Cloudinary</p>
+
+      <div class="config-section">
+        <h2>Configuration</h2>
+        <div class="form-group">
+          <label for="cloud-name">Cloud Name:</label>
+          <input type="text" id="cloud-name" placeholder="your-cloud-name" />
+        </div>
+        <div class="form-group">
+          <label for="api-key">API Key:</label>
+          <input type="text" id="api-key" placeholder="your-api-key" />
+        </div>
+        <div class="form-group">
+          <label for="api-secret">API Secret:</label>
+          <input type="password" id="api-secret" placeholder="your-api-secret" />
+        </div>
+        <div class="form-group">
+          <label for="download-path">Download Folder:</label>
+          <div class="path-selector">
+            <input type="text" id="download-path" placeholder="Select download folder..." readonly />
+            <button type="button" id="select-folder">Browse</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions-section">
+        <button id="fetch-resources" disabled>Fetch Resources</button>
+        <button id="start-download" disabled>Start Download</button>
+        <button id="export-metadata" disabled>Export Metadata</button>
+      </div>
+
+      <div class="progress-section" style="display: none;">
+        <h2>Progress</h2>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <div class="progress-info">
+          <span id="progress-text">0 / 0 files</span>
+          <span id="current-file"></span>
+        </div>
+      </div>
+
+      <div class="resources-section">
+        <h2>Resources Found</h2>
+        <div id="resources-count">No resources fetched yet</div>
+        <div id="resources-stats" style="display: none;">
+          <div class="stats-grid">
+            <div class="stat-item">
+              <span class="stat-label">Total Size:</span>
+              <span id="total-size">0 MB</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Estimated Time:</span>
+              <span id="estimated-time">0 min</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Downloaded:</span>
+              <span id="downloaded-size">0 MB</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Remaining Time:</span>
+              <span id="remaining-time">0 min</span>
+            </div>
+          </div>
+        </div>
+        <div id="resources-list"></div>
+      </div>
+
+      <div class="log-section">
+        <h2>Log</h2>
+        <div id="log-output"></div>
+      </div>
+    </main>
+  </body>
+</html>

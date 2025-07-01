@@ -1,0 +1,186 @@
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Mutex;
+use tauri::State;
+use tokio::fs;
+use tokio::time::{sleep, Duration};
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CloudinaryResource {
+    public_id: String,
+    format: String,
+    version: i64,
+    resource_type: String,
+    #[serde(rename = "type")]
+    resource_kind: String,
+    created_at: String,
+    bytes: u64,
+    width: Option<u32>,
+    height: Option<u32>,
+    secure_url: String,
+    tags: Vec<String>,
+    context: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CloudinaryResponse {
+    resources: Vec<CloudinaryResource>,
+    next_cursor: Option<String>,
+    rate_limit_allowed: Option<u32>,
+    rate_limit_remaining: Option<u32>,
+    rate_limit_reset_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct DownloadProgress {
+    total: usize,
+    downloaded: usize,
+    current_file: String,
+    status: String,
+}
+
+struct AppState {
+    download_progress: Mutex<DownloadProgress>,
+}
+
+#[tauri::command]
+async fn fetch_cloudinary_resources(
+    cloud_name: String,
+    api_key: String,
+    api_secret: String,
+    cursor: Option<String>,
+) -> Result<CloudinaryResponse, String> {
+    let client = Client::new();
+    let mut url = format!("https://{}:{}@api.cloudinary.com/v1_1/{}/resources/image",
+        api_key, api_secret, cloud_name);
+    
+    if let Some(cursor) = cursor {
+        url = format!("{}?next_cursor={}&max_results=100", url, cursor);
+    } else {
+        url = format!("{}?max_results=100", url);
+    }
+
+    sleep(Duration::from_millis(100)).await;
+
+    let response = client.get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("API request failed with status: {}", response.status()));
+    }
+
+    let cloudinary_response: CloudinaryResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    Ok(cloudinary_response)
+}
+
+#[tauri::command]
+async fn download_resource(
+    url: String,
+    file_path: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let client = Client::new();
+    
+    // Create parent directory if it doesn't exist
+    if let Some(parent) = std::path::Path::new(&file_path).parent() {
+        fs::create_dir_all(parent)
+            .await
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    
+    let response = client.get(&url)
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|e| format!("Download failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Download failed with status: {}", response.status()));
+    }
+
+    let bytes = response.bytes()
+        .await
+        .map_err(|e| format!("Failed to read response: {}", e))?;
+
+    fs::write(&file_path, bytes)
+        .await
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    {
+        let mut progress = state.download_progress.lock().unwrap();
+        progress.downloaded += 1;
+        progress.current_file = file_path;
+    }
+
+    sleep(Duration::from_millis(200)).await;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_download_progress(state: State<'_, AppState>) -> Result<DownloadProgress, String> {
+    let progress = state.download_progress.lock().unwrap();
+    Ok(DownloadProgress {
+        total: progress.total,
+        downloaded: progress.downloaded,
+        current_file: progress.current_file.clone(),
+        status: progress.status.clone(),
+    })
+}
+
+#[tauri::command]
+async fn reset_download_progress(total: usize, state: State<'_, AppState>) -> Result<(), String> {
+    let mut progress = state.download_progress.lock().unwrap();
+    progress.total = total;
+    progress.downloaded = 0;
+    progress.current_file = String::new();
+    progress.status = "starting".to_string();
+    Ok(())
+}
+
+#[tauri::command]
+async fn save_metadata(
+    resources: Vec<CloudinaryResource>,
+    file_path: String,
+) -> Result<(), String> {
+    let json_data = serde_json::to_string_pretty(&resources)
+        .map_err(|e| format!("Failed to serialize metadata: {}", e))?;
+
+    fs::write(&file_path, json_data)
+        .await
+        .map_err(|e| format!("Failed to write metadata file: {}", e))?;
+
+    Ok(())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
+        .manage(AppState {
+            download_progress: Mutex::new(DownloadProgress {
+                total: 0,
+                downloaded: 0,
+                current_file: String::new(),
+                status: "idle".to_string(),
+            }),
+        })
+        .invoke_handler(tauri::generate_handler![
+            fetch_cloudinary_resources,
+            download_resource,
+            get_download_progress,
+            reset_download_progress,
+            save_metadata
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
