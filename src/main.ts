@@ -59,11 +59,53 @@ function showStep(stepNumber: number) {
   updateButtons();
 }
 
+function saveCredentials() {
+  const cloudName = (document.getElementById('cloud-name') as HTMLInputElement)?.value || '';
+  const apiKey = (document.getElementById('api-key') as HTMLInputElement)?.value || '';
+  const apiSecret = (document.getElementById('api-secret') as HTMLInputElement)?.value || '';
+  const path = (document.getElementById('download-path') as HTMLInputElement)?.value || '';
+  
+  localStorage.setItem('cloudinary-backup-credentials', JSON.stringify({
+    cloudName,
+    apiKey,
+    apiSecret,
+    path
+  }));
+}
+
+function loadCredentials() {
+  try {
+    const saved = localStorage.getItem('cloudinary-backup-credentials');
+    if (saved) {
+      const creds = JSON.parse(saved);
+      
+      const cloudNameInput = document.getElementById('cloud-name') as HTMLInputElement;
+      const apiKeyInput = document.getElementById('api-key') as HTMLInputElement;
+      const apiSecretInput = document.getElementById('api-secret') as HTMLInputElement;
+      const pathInput = document.getElementById('download-path') as HTMLInputElement;
+      
+      if (cloudNameInput) cloudNameInput.value = creds.cloudName || '';
+      if (apiKeyInput) apiKeyInput.value = creds.apiKey || '';
+      if (apiSecretInput) apiSecretInput.value = creds.apiSecret || '';
+      if (pathInput) pathInput.value = creds.path || '';
+      
+      if (creds.path) {
+        downloadPath = creds.path;
+      }
+    }
+  } catch (error) {
+    console.log('Error loading saved credentials:', error);
+  }
+}
+
 function updateButtons() {
   const cloudName = (document.getElementById('cloud-name') as HTMLInputElement)?.value || '';
   const apiKey = (document.getElementById('api-key') as HTMLInputElement)?.value || '';
   const apiSecret = (document.getElementById('api-secret') as HTMLInputElement)?.value || '';
   const path = (document.getElementById('download-path') as HTMLInputElement)?.value || '';
+  
+  // Save credentials whenever they change
+  saveCredentials();
   
   const step1Complete = cloudName && apiKey && apiSecret;
   const step2Complete = step1Complete && path;
@@ -139,6 +181,7 @@ async function selectFolder() {
       downloadPath = selected;
       (document.getElementById("download-path") as HTMLInputElement).value = selected;
       logMessage(`Selected download folder: ${selected}`);
+      saveCredentials();
       updateButtons();
     }
   } catch (error) {
@@ -335,6 +378,9 @@ window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("cloud-name")?.addEventListener("input", updateButtons);
   document.getElementById("api-key")?.addEventListener("input", updateButtons);
   document.getElementById("api-secret")?.addEventListener("input", updateButtons);
+  
+  // Load saved credentials first
+  loadCredentials();
   
   // Initialize with step 1
   showStep(1);
