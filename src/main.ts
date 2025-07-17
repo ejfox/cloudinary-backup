@@ -38,9 +38,436 @@ let totalBytes: number = 0;
 let downloadedBytes: number = 0;
 let downloadStartTime: number = 0;
 
+// Download state management
+interface DownloadState {
+  downloadedFiles: string[];
+  failedFiles: { resource: CloudinaryResource; error: string; retryCount: number }[];
+  totalFiles: number;
+  startTime: number;
+  lastSaveTime: number;
+}
+
+// Scan state management
+interface ScanState {
+  resources: CloudinaryResource[];
+  totalBytes: number;
+  scanTime: number;
+  cloudName: string;
+  apiKey: string; // Store hash for validation
+  validatedResourceCount: number;
+  invalidatedResourceCount: number;
+}
+
+let scanState: ScanState = {
+  resources: [],
+  totalBytes: 0,
+  scanTime: 0,
+  cloudName: '',
+  apiKey: '',
+  validatedResourceCount: 0,
+  invalidatedResourceCount: 0
+};
+
+// Simple hash function for API key validation
+function hashString(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return hash.toString();
+}
+
+// Save scan state to localStorage
+function saveScanState(validCount: number = 0, invalidCount: number = 0) {
+  const cloudName = (document.getElementById("cloud-name") as HTMLInputElement).value;
+  const apiKey = (document.getElementById("api-key") as HTMLInputElement).value;
+  
+  const stateToSave: ScanState = {
+    resources: allResources,
+    totalBytes,
+    scanTime: Date.now(),
+    cloudName,
+    apiKey: hashString(apiKey), // Store hash for validation
+    validatedResourceCount: validCount || allResources.length,
+    invalidatedResourceCount: invalidCount
+  };
+  
+  localStorage.setItem('cloudinary-scan-state', JSON.stringify(stateToSave));
+}
+
+// Load scan state from localStorage
+function loadScanState(): boolean {
+  const saved = localStorage.getItem('cloudinary-scan-state');
+  if (!saved) return false;
+  
+  try {
+    const parsed: ScanState = JSON.parse(saved);
+    const currentCloudName = (document.getElementById("cloud-name") as HTMLInputElement).value;
+    const currentApiKey = (document.getElementById("api-key") as HTMLInputElement).value;
+    
+    // Validate that credentials match
+    if (parsed.cloudName !== currentCloudName || parsed.apiKey !== hashString(currentApiKey)) {
+      localStorage.removeItem('cloudinary-scan-state');
+      return false;
+    }
+    
+    // Check if scan is recent (within 1 hour)
+    const hoursSinceScan = (Date.now() - parsed.scanTime) / (1000 * 60 * 60);
+    if (hoursSinceScan > 1) {
+      // Scan is old, ask user if they want to use it
+      const useOldScan = confirm(`Found a previous scan from ${formatTimeAgo(parsed.scanTime)} with ${parsed.resources.length} photos. Use this scan or scan again?`);
+      if (!useOldScan) {
+        localStorage.removeItem('cloudinary-scan-state');
+        return false;
+      }
+    }
+    
+    // Load the saved scan
+    allResources = parsed.resources;
+    totalBytes = parsed.totalBytes;
+    scanState = parsed;
+    
+    const invalidCount = parsed.invalidatedResourceCount || 0;
+    logMessage(`Loaded previous scan: ${allResources.length} accessible resources (${formatBytes(totalBytes)})`);
+    if (invalidCount > 0) {
+      logMessage(`Previous scan filtered out ${invalidCount} deleted/inaccessible files`);
+      showToast(`Loaded previous scan (${allResources.length} accessible photos, ${invalidCount} deleted files filtered)`, 'info');
+    } else {
+      showToast(`Loaded previous scan (${allResources.length} photos)`, 'info');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Error loading scan state:", error);
+    localStorage.removeItem('cloudinary-scan-state');
+    return false;
+  }
+}
+
+// Clear scan state
+function clearScanState() {
+  localStorage.removeItem('cloudinary-scan-state');
+  scanState = {
+    resources: [],
+    totalBytes: 0,
+    scanTime: 0,
+    cloudName: '',
+    apiKey: '',
+    validatedResourceCount: 0,
+    invalidatedResourceCount: 0
+  };
+}
+
+// Remove debug pollution
+
+// Format time ago helper
+function formatTimeAgo(timestamp: number): string {
+  const now = Date.now();
+  const diffMs = now - timestamp;
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  
+  if (diffMins < 60) {
+    return `${diffMins} minute${diffMins === 1 ? '' : 's'} ago`;
+  } else if (diffHours < 24) {
+    return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+  } else {
+    return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+  }
+}
+
+let downloadState: DownloadState = {
+  downloadedFiles: [],
+  failedFiles: [],
+  totalFiles: 0,
+  startTime: 0,
+  lastSaveTime: 0
+};
+
+// Save download state to localStorage
+function saveDownloadState() {
+  const stateToSave = {
+    ...downloadState,
+    downloadPath,
+    totalBytes,
+    downloadedBytes,
+    lastSaveTime: Date.now()
+  };
+  localStorage.setItem('cloudinary-download-state', JSON.stringify(stateToSave));
+}
+
+// Load download state from localStorage
+function loadDownloadState(): boolean {
+  const saved = localStorage.getItem('cloudinary-download-state');
+  if (!saved) return false;
+  
+  try {
+    const parsed = JSON.parse(saved);
+    
+    // Check if state is recent (within 24 hours)
+    const hoursSinceLastSave = (Date.now() - parsed.lastSaveTime) / (1000 * 60 * 60);
+    if (hoursSinceLastSave > 24) {
+      localStorage.removeItem('cloudinary-download-state');
+      return false;
+    }
+    
+    downloadState = {
+      downloadedFiles: parsed.downloadedFiles || [],
+      failedFiles: parsed.failedFiles || [],
+      totalFiles: parsed.totalFiles || 0,
+      startTime: parsed.startTime || 0,
+      lastSaveTime: parsed.lastSaveTime || 0
+    };
+    
+    downloadPath = parsed.downloadPath || "";
+    totalBytes = parsed.totalBytes || 0;
+    downloadedBytes = parsed.downloadedBytes || 0;
+    
+    return true;
+  } catch (error) {
+    console.error("Error loading download state:", error);
+    localStorage.removeItem('cloudinary-download-state');
+    return false;
+  }
+}
+
+// Clear download state
+function clearDownloadState() {
+  localStorage.removeItem('cloudinary-download-state');
+  downloadState = {
+    downloadedFiles: [],
+    failedFiles: [],
+    totalFiles: 0,
+    startTime: 0,
+    lastSaveTime: 0
+  };
+}
+
+// Extract filename from Cloudinary URL
+function getFilenameFromUrl(resource: CloudinaryResource): string {
+  try {
+    // For download filename, use public_id as the base since that's what Cloudinary uses
+    const publicId = resource.public_id.replace(/[\/\\]/g, '_');
+    return `${publicId}.${resource.format}`;
+  } catch (error) {
+    // Fallback to public_id + format
+    return `${resource.public_id.replace(/[\/\\]/g, '_')}.${resource.format}`;
+  }
+}
+
+// Create a proper download URL based on the resource
+function getDownloadUrl(resource: CloudinaryResource): string {
+  // Use the secure_url as provided by the API
+  return resource.secure_url;
+}
+
+// Remove debug pollution
+
+// Check if a resource URL is valid before attempting download
+async function isResourceUrlValid(resource: CloudinaryResource): Promise<boolean> {
+  try {
+    const response = await fetch(resource.secure_url, { 
+      method: 'HEAD',
+      timeout: 5000 // 5 second timeout
+    });
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+// Validate multiple resources in batches
+async function validateResourcesBatch(resources: CloudinaryResource[], batchSize: number = 10): Promise<{
+  valid: CloudinaryResource[];
+  invalid: CloudinaryResource[];
+}> {
+  const valid: CloudinaryResource[] = [];
+  const invalid: CloudinaryResource[] = [];
+  
+  for (let i = 0; i < resources.length; i += batchSize) {
+    const batch = resources.slice(i, i + batchSize);
+    
+    const validationPromises = batch.map(async (resource) => {
+      const isValid = await isResourceUrlValid(resource);
+      return { resource, isValid };
+    });
+    
+    const results = await Promise.all(validationPromises);
+    
+    results.forEach(({ resource, isValid }) => {
+      if (isValid) {
+        valid.push(resource);
+      } else {
+        invalid.push(resource);
+      }
+    });
+    
+    // Update progress
+    const progress = Math.min(i + batchSize, resources.length);
+    updateScanningMessage(`validating files...`, `${progress}/${resources.length} checked`);
+    
+    // Small delay to avoid overwhelming the server
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  
+  return { valid, invalid };
+}
+
+// Retry logic with exponential backoff
+async function downloadWithRetry(resource: CloudinaryResource, maxRetries: number = 3): Promise<boolean> {
+  const fileName = getFilenameFromUrl(resource);
+  const filePath = `${downloadPath}/${fileName}`;
+  
+  // Check if file already exists and has correct size
+  try {
+    const exists = await invoke("file_exists", { path: filePath });
+    if (exists) {
+      const fileSize = await invoke("get_file_size", { path: filePath });
+      if (fileSize === resource.bytes) {
+        logMessage(`Skipping ${fileName} (already exists with correct size)`);
+        // Still count as downloaded and add to state
+        if (!downloadState.downloadedFiles.includes(fileName)) {
+          downloadState.downloadedFiles.push(fileName);
+          downloadedBytes += resource.bytes;
+        }
+        return true;
+      } else {
+        logMessage(`Re-downloading ${fileName} (size mismatch: ${fileSize} vs ${resource.bytes})`);
+      }
+    }
+  } catch (error) {
+    // File doesn't exist, continue with download
+  }
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // Check if download was cancelled
+    if (downloadCancelled) {
+      return false;
+    }
+    
+    try {
+      await invoke("download_resource", {
+        url: resource.secure_url,
+        filePath: filePath,
+      });
+      
+      downloadedBytes += resource.bytes;
+      downloadState.downloadedFiles.push(fileName);
+      
+      // Save state every 10 downloads
+      if (downloadState.downloadedFiles.length % 10 === 0) {
+        saveDownloadState();
+      }
+      
+      return true;
+    } catch (error) {
+      const errorStr = String(error);
+      
+      // Don't retry 404 errors - file doesn't exist on Cloudinary
+      if (errorStr.includes('404')) {
+        logMessage(`File not found on Cloudinary: ${fileName} (deleted from Cloudinary)`);
+        downloadState.failedFiles.push({
+          resource,
+          error: "File deleted from Cloudinary (404)",
+          retryCount: attempt + 1
+        });
+        return false;
+      }
+      
+      // Exponential backoff for other errors
+      const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+      logMessage(`Attempt ${attempt + 1} failed for ${fileName}: ${error}. Retrying in ${delay}ms...`);
+      
+      if (attempt < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        downloadState.failedFiles.push({
+          resource,
+          error: errorStr,
+          retryCount: attempt + 1
+        });
+        logMessage(`Error downloading ${fileName}: ${error}`);
+        return false;
+      }
+    }
+  }
+  
+  return false;
+}
+
+// Check if download can be resumed
+function canResumeDownload(): boolean {
+  return downloadState.downloadedFiles.length > 0 && 
+         downloadState.totalFiles > 0 && 
+         downloadPath !== "";
+}
+
+// Analyze download folder for existing files
+async function analyzeDownloadFolder(): Promise<{
+  totalFiles: number;
+  existingFiles: number;
+  missingFiles: number;
+  percentage: number;
+  existingFileNames: string[];
+  missingFileNames: string[];
+}> {
+  if (!downloadPath || allResources.length === 0) {
+    return {
+      totalFiles: 0,
+      existingFiles: 0,
+      missingFiles: 0,
+      percentage: 0,
+      existingFileNames: [],
+      missingFileNames: []
+    };
+  }
+
+  const totalFiles = allResources.length;
+  const existingFileNames: string[] = [];
+  const missingFileNames: string[] = [];
+
+  for (const resource of allResources) {
+    const fileName = getFilenameFromUrl(resource);
+    const filePath = `${downloadPath}/${fileName}`;
+    
+    try {
+      const exists = await invoke("file_exists", { path: filePath });
+      if (exists) {
+        const fileSize = await invoke("get_file_size", { path: filePath });
+        if (fileSize === resource.bytes) {
+          existingFileNames.push(fileName);
+        } else {
+          missingFileNames.push(fileName);
+        }
+      } else {
+        missingFileNames.push(fileName);
+      }
+    } catch (error) {
+      missingFileNames.push(fileName);
+    }
+  }
+
+  const existingFiles = existingFileNames.length;
+  const missingFiles = missingFileNames.length;
+  const percentage = totalFiles > 0 ? (existingFiles / totalFiles) * 100 : 0;
+
+  return {
+    totalFiles,
+    existingFiles,
+    missingFiles,
+    percentage,
+    existingFileNames,
+    missingFileNames
+  };
+}
+
 // Step management
 let currentStep = 1;
 let isScanning = false;
+let downloadCancelled = false;
 
 // Toast notifications
 function showToast(message: string, type: 'success' | 'error' | 'info' = 'info') {
@@ -103,6 +530,121 @@ function setButtonLoading(buttonId: string, loading: boolean) {
       button.classList.remove('loading');
       button.disabled = false;
     }
+  }
+}
+
+// Cancel download
+function cancelDownload() {
+  downloadCancelled = true;
+  downloadCancelled = false;
+  
+  logMessage("Download cancelled by user");
+  showToast("Download cancelled", 'info');
+  
+  // Reset UI
+  const downloadButton = document.getElementById("start-download") as HTMLButtonElement;
+  const cancelButton = document.getElementById("cancel-download") as HTMLButtonElement;
+  
+  downloadButton.disabled = false;
+  cancelButton.style.display = 'none';
+  setButtonLoading('start-download', false);
+  
+  updateUI();
+}
+
+// Analyze download folder and update UI
+async function analyzeFolder() {
+  if (!downloadPath || allResources.length === 0) {
+    showToast("Please scan for photos and select a download folder first", 'error');
+    return;
+  }
+
+  setButtonLoading('analyze-folder', true);
+  showToast("Analyzing download folder...", 'info');
+  
+  try {
+    const analysis = await analyzeDownloadFolder();
+    
+    // Update UI with analysis results
+    document.getElementById("analysis-folder-path")!.textContent = downloadPath;
+    document.getElementById("analysis-existing-count")!.textContent = 
+      `${analysis.existingFiles} of ${analysis.totalFiles} files`;
+    document.getElementById("analysis-missing-count")!.textContent = 
+      `${analysis.missingFiles} files`;
+    document.getElementById("analysis-percentage")!.textContent = 
+      `${analysis.percentage.toFixed(1)}%`;
+    
+    // Show download missing button if there are missing files
+    const downloadMissingButton = document.getElementById("download-missing") as HTMLButtonElement;
+    if (analysis.missingFiles > 0) {
+      downloadMissingButton.style.display = 'block';
+      downloadMissingButton.textContent = `download ${analysis.missingFiles} missing files`;
+    } else {
+      downloadMissingButton.style.display = 'none';
+    }
+    
+    // Show the analysis section
+    const analysisSection = document.getElementById("download-folder-status") as HTMLElement;
+    analysisSection.style.display = 'block';
+    
+    // Log detailed analysis
+    logMessage(`Folder analysis complete:`);
+    logMessage(`- Total files expected: ${analysis.totalFiles}`);
+    logMessage(`- Files already downloaded: ${analysis.existingFiles} (${analysis.percentage.toFixed(1)}%)`);
+    logMessage(`- Missing files: ${analysis.missingFiles}`);
+    
+    if (analysis.missingFiles > 0) {
+      logMessage(`Missing files breakdown:`);
+      const missingByCloudinary = analysis.missingFileNames.filter(name => {
+        const resource = allResources.find(r => getFilenameFromUrl(r) === name);
+        return resource && resource.secure_url;
+      });
+      
+      logMessage(`- Expected to download: ${missingByCloudinary.length} files`);
+      logMessage(`- May be deleted from Cloudinary: ${analysis.missingFiles - missingByCloudinary.length} files`);
+    }
+    
+    showToast(`Analysis complete: ${analysis.percentage.toFixed(1)}% downloaded`, 'success');
+    
+  } catch (error) {
+    logMessage(`Error analyzing folder: ${error}`);
+    showToast(`Error analyzing folder: ${error}`, 'error');
+  } finally {
+    setButtonLoading('analyze-folder', false);
+  }
+}
+
+// Download only missing files
+async function downloadMissingFiles() {
+  if (!downloadPath || allResources.length === 0) {
+    showToast("Please scan for photos and select a download folder first", 'error');
+    return;
+  }
+
+  const analysis = await analyzeDownloadFolder();
+  if (analysis.missingFiles === 0) {
+    showToast("No missing files to download!", 'info');
+    return;
+  }
+
+  // Filter resources to only missing files
+  const missingResources = allResources.filter(resource => {
+    const fileName = getFilenameFromUrl(resource);
+    return analysis.missingFileNames.includes(fileName);
+  });
+
+  logMessage(`Starting download of ${missingResources.length} missing files...`);
+  logMessage(`Math: Expected ${analysis.totalFiles} total, have ${analysis.existingFiles}, downloading ${missingResources.length} missing`);
+  
+  // Set allResources temporarily to only missing files for download
+  const originalResources = allResources;
+  allResources = missingResources;
+  
+  try {
+    await startDownload();
+  } finally {
+    // Restore original resources
+    allResources = originalResources;
   }
 }
 
@@ -248,6 +790,13 @@ async function selectFolder() {
       logMessage(`Selected download folder: ${selected}`);
       saveCredentials();
       updateButtons();
+      
+      // Auto-show folder analysis if we have scanned resources
+      if (allResources.length > 0) {
+        setTimeout(() => {
+          analyzeFolder();
+        }, 500);
+      }
     }
   } catch (error) {
     logMessage(`Error selecting folder: ${error}`);
@@ -266,6 +815,30 @@ async function fetchResources() {
   }
 
   if (isScanning) {
+    return;
+  }
+
+  // Check for cached scan first
+  const hasExistingScan = loadScanState();
+  if (hasExistingScan) {
+    // Show results from cached scan
+    const resourcesSection = document.querySelector(".resources-section") as HTMLElement;
+    resourcesSection.style.display = "block";
+    
+    const invalidCount = scanState.invalidatedResourceCount || 0;
+    document.getElementById("resources-count")!.textContent = 
+      `Found ${allResources.length} accessible resources${invalidCount > 0 ? ` (${invalidCount} deleted files filtered out)` : ''}`;
+    
+    document.getElementById("total-size")!.textContent = formatBytes(totalBytes);
+    
+    // Estimate time based on average download speed
+    const estimatedSpeed = 512 * 1024; // 500KB/s conservative estimate
+    const estimatedSeconds = totalBytes / estimatedSpeed;
+    document.getElementById("estimated-time")!.textContent = formatTime(estimatedSeconds);
+    
+    document.getElementById("resources-stats")!.style.display = "block";
+    
+    updateUI();
     return;
   }
 
@@ -306,27 +879,63 @@ async function fetchResources() {
     } while (cursor);
     
     logMessage(`Finished fetching! Total resources: ${totalFetched}`);
+    logMessage(`Now validating URLs to filter out deleted files...`);
+    
+    // Validate URLs to filter out deleted files
+    updateScanningMessage('validating files...', '0 checked');
+    showToast('Validating file URLs...', 'info');
+    
+    const { valid, invalid } = await validateResourcesBatch(allResources);
+    
+    // Update allResources to only include valid files
+    allResources = valid;
     
     // Hide scanning UI and show success
     hideScanningStatus();
-    showToast(`Found ${totalFetched} photos!`, 'success');
+    
+    const validCount = valid.length;
+    const invalidCount = invalid.length;
+    
+    logMessage(`Validation complete: ${validCount} accessible, ${invalidCount} deleted/inaccessible`);
+    
+    if (invalidCount > 0) {
+      logMessage(`Filtered out ${invalidCount} deleted/inaccessible files from scan results`);
+      showToast(`Found ${validCount} accessible photos (${invalidCount} deleted files filtered out)`, 'success');
+    } else {
+      showToast(`Found ${validCount} accessible photos!`, 'success');
+    }
+    
+    // Calculate total size and show stats (only for valid files)
+    totalBytes = allResources.reduce((sum, resource) => sum + resource.bytes, 0);
+    
+    // Save scan state for future use
+    saveScanState(validCount, invalidCount);
     
     // Show the resources section now that we have data
     const resourcesSection = document.querySelector(".resources-section") as HTMLElement;
     resourcesSection.style.display = "block";
     
-    // Calculate total size and show stats
-    totalBytes = allResources.reduce((sum, resource) => sum + resource.bytes, 0);
+    // Update resource count to show validated count
+    document.getElementById("resources-count")!.textContent = 
+      `Found ${validCount} accessible resources${invalidCount > 0 ? ` (${invalidCount} deleted files filtered out)` : ''}`;
+    
     document.getElementById("total-size")!.textContent = formatBytes(totalBytes);
     
-    // Estimate time based on average download speed (assuming ~1MB/s with delays)
-    const estimatedSpeed = 1024 * 1024; // 1 MB/s conservative estimate
+    // Estimate time based on average download speed (assuming ~500KB/s with delays and retries)
+    const estimatedSpeed = 512 * 1024; // 500KB/s conservative estimate including retries
     const estimatedSeconds = totalBytes / estimatedSpeed;
     document.getElementById("estimated-time")!.textContent = formatTime(estimatedSeconds);
     
     document.getElementById("resources-stats")!.style.display = "block";
     
     updateUI();
+    
+    // Auto-analyze folder if download path is selected
+    if (downloadPath) {
+      setTimeout(() => {
+        analyzeFolder();
+      }, 800);
+    }
     
   } catch (error) {
     logMessage(`Error fetching resources: ${error}`);
@@ -347,53 +956,126 @@ async function startDownload() {
   const progressSection = document.querySelector(".progress-section") as HTMLElement;
   progressSection.style.display = "block";
   
-  // Disable download button during download
+  // Set up UI for download
   const downloadButton = document.getElementById("start-download") as HTMLButtonElement;
+  const cancelButton = document.getElementById("cancel-download") as HTMLButtonElement;
+  
   downloadButton.disabled = true;
+  cancelButton.style.display = 'block';
+  setButtonLoading('start-download', true);
+  
+  downloadCancelled = false;
 
   try {
+    // Check if we can resume an existing download
+    const hasExistingState = loadDownloadState();
+    let resourcesToDownload = allResources;
+    
+    if (hasExistingState && canResumeDownload()) {
+      const shouldResume = confirm(`Found an incomplete download with ${downloadState.downloadedFiles.length} files already downloaded. Resume download?`);
+      if (shouldResume) {
+        logMessage(`Resuming download... ${downloadState.downloadedFiles.length} files already completed.`);
+        // Filter out already downloaded files
+        resourcesToDownload = allResources.filter(resource => {
+          const fileName = getFilenameFromUrl(resource);
+          return !downloadState.downloadedFiles.includes(fileName);
+        });
+        downloadStartTime = downloadState.startTime;
+        showToast(`Resuming download (${resourcesToDownload.length} files remaining)`, 'info');
+      } else {
+        clearDownloadState();
+        downloadedBytes = 0;
+        downloadStartTime = Date.now();
+      }
+    } else {
+      clearDownloadState();
+      downloadedBytes = 0;
+      downloadStartTime = Date.now();
+    }
+
+    // Initialize download state
+    downloadState.totalFiles = allResources.length;
+    downloadState.startTime = downloadStartTime;
+    
     await invoke("reset_download_progress", { total: allResources.length });
     
-    logMessage(`Starting download of ${allResources.length} files (${formatBytes(totalBytes)})...`);
-    downloadedBytes = 0;
-    downloadStartTime = Date.now();
+    logMessage(`Starting download of ${resourcesToDownload.length} files (${formatBytes(totalBytes)})...`);
+    showToast(`Starting download of ${resourcesToDownload.length} files`, 'info');
     
-    let failedDownloads = 0;
-
-    for (let i = 0; i < allResources.length; i++) {
-      const resource = allResources[i];
-      // Sanitize filename
-      const fileName = `${resource.public_id.replace(/[\/\\]/g, '_')}.${resource.format}`;
-      const filePath = await join(downloadPath, fileName);
+    let successCount = 0;
+    let skipCount = 0;
+    
+    for (let i = 0; i < resourcesToDownload.length; i++) {
+      // Check if download was cancelled
+      if (downloadCancelled) {
+        logMessage("Download cancelled by user");
+        showToast("Download cancelled", 'info');
+        break;
+      }
       
-      try {
-        await invoke("download_resource", {
-          url: resource.secure_url,
-          filePath,
-        });
-        
-        downloadedBytes += resource.bytes;
-        
-        const progress: DownloadProgress = await invoke("get_download_progress");
-        updateProgressUI(progress);
-        updateDownloadStats();
-        
-      } catch (error) {
-        failedDownloads++;
-        logMessage(`Error downloading ${fileName}: ${error}`);
+      const resource = resourcesToDownload[i];
+      
+      const success = await downloadWithRetry(resource);
+      if (success) {
+        successCount++;
+        const fileName = getFilenameFromUrl(resource);
+        if (downloadState.downloadedFiles.includes(fileName)) {
+          // This was already downloaded, so it was skipped
+          skipCount++;
+        }
+      }
+      
+      // Update progress UI
+      const progress: DownloadProgress = await invoke("get_download_progress");
+      updateProgressUI(progress);
+      updateDownloadStats();
+      
+      // Save state periodically
+      if (i % 5 === 0) {
+        saveDownloadState();
       }
     }
     
-    if (failedDownloads > 0) {
-      logMessage(`Download completed with ${failedDownloads} errors!`);
+    // Final state save
+    saveDownloadState();
+    
+    const totalDownloaded = downloadState.downloadedFiles.length;
+    const totalFailed = downloadState.failedFiles.length;
+    const totalSkipped = skipCount;
+    
+    if (totalFailed > 0) {
+      logMessage(`Download completed! Downloaded: ${totalDownloaded}, Failed: ${totalFailed}, Skipped: ${totalSkipped}`);
+      showToast(`Download completed with ${totalFailed} failed files`, 'error');
+      
+      // Show failed files summary
+      const failedBy404 = downloadState.failedFiles.filter(f => f.error.includes('404')).length;
+      const failedByOther = totalFailed - failedBy404;
+      
+      if (failedBy404 > 0) {
+        logMessage(`Files deleted from Cloudinary (404 errors): ${failedBy404}`);
+        logMessage(`These files are listed in your account but were deleted from Cloudinary storage`);
+      }
+      if (failedByOther > 0) {
+        logMessage(`Network/other errors: ${failedByOther}`);
+      }
     } else {
       logMessage("Download completed successfully!");
+      showToast("All files downloaded successfully!", 'success');
+      clearDownloadState(); // Clear state on successful completion
     }
     
   } catch (error) {
     logMessage(`Error during download: ${error}`);
+    showToast(`Download error: ${error}`, 'error');
   } finally {
+    // Reset UI state
+    downloadCancelled = false;
+    downloadCancelled = false;
+    
     downloadButton.disabled = false;
+    cancelButton.style.display = 'none';
+    setButtonLoading('start-download', false);
+    
     updateUI();
   }
 }
@@ -460,6 +1142,9 @@ window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("select-folder")?.addEventListener("click", selectFolder);
   document.getElementById("fetch-resources")?.addEventListener("click", fetchResources);
   document.getElementById("start-download")?.addEventListener("click", startDownload);
+  document.getElementById("cancel-download")?.addEventListener("click", cancelDownload);
+  document.getElementById("analyze-folder")?.addEventListener("click", analyzeFolder);
+  document.getElementById("download-missing")?.addEventListener("click", downloadMissingFiles);
   document.getElementById("export-metadata")?.addEventListener("click", exportMetadata);
   document.getElementById("toggle-log")?.addEventListener("click", toggleLog);
   

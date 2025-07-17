@@ -163,6 +163,18 @@ async fn save_metadata(
     Ok(())
 }
 
+#[tauri::command]
+async fn file_exists(path: String) -> Result<bool, String> {
+    Ok(std::path::Path::new(&path).exists())
+}
+
+#[tauri::command]
+async fn get_file_size(path: String) -> Result<u64, String> {
+    let metadata = std::fs::metadata(&path)
+        .map_err(|e| format!("Failed to get file metadata: {}", e))?;
+    Ok(metadata.len())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -182,7 +194,9 @@ pub fn run() {
             download_resource,
             get_download_progress,
             reset_download_progress,
-            save_metadata
+            save_metadata,
+            file_exists,
+            get_file_size
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

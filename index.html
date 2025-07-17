@@ -109,6 +109,9 @@
               <span class="button-text">2. download all photos</span>
               <span class="button-spinner hidden">downloading...</span>
             </button>
+            <button id="cancel-download" class="secondary-button" style="display: none;">
+              cancel download
+            </button>
             <div class="help-text">
               this will download every photo to your chosen folder.
               depending on how many photos you have, this could take a while.
@@ -143,6 +146,32 @@
         <div class="scanning-text">
           <span id="scanning-message">connecting to cloudinary...</span>
           <span id="scanning-count"></span>
+        </div>
+      </div>
+
+      <div class="download-folder-status" id="download-folder-status" style="display: none;">
+        <h2>download folder analysis</h2>
+        <div class="folder-analysis">
+          <div class="analysis-item">
+            <span class="analysis-label">download folder:</span>
+            <span id="analysis-folder-path"></span>
+          </div>
+          <div class="analysis-item">
+            <span class="analysis-label">already downloaded:</span>
+            <span id="analysis-existing-count"></span>
+          </div>
+          <div class="analysis-item">
+            <span class="analysis-label">missing files:</span>
+            <span id="analysis-missing-count"></span>
+          </div>
+          <div class="analysis-item">
+            <span class="analysis-label">completion:</span>
+            <span id="analysis-percentage"></span>
+          </div>
+        </div>
+        <div class="analysis-actions">
+          <button id="analyze-folder" class="secondary-button">analyze folder</button>
+          <button id="download-missing" class="primary-button" style="display: none;">download missing files</button>
         </div>
       </div>
 
