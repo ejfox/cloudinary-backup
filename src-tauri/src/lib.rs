@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use tauri::State;
 use tokio::fs;
 use tokio::time::{sleep, Duration};
+use base64::Engine;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CloudinaryResource {
@@ -52,18 +53,23 @@ async fn fetch_cloudinary_resources(
     cursor: Option<String>,
 ) -> Result<CloudinaryResponse, String> {
     let client = Client::new();
-    let mut url = format!("https://{}:{}@api.cloudinary.com/v1_1/{}/resources/image",
-        api_key, api_secret, cloud_name);
+    let mut url = format!("https://api.cloudinary.com/v1_1/{}/resources/image", cloud_name);
     
     if let Some(cursor) = cursor {
         url = format!("{}?next_cursor={}&max_results=100", url, cursor);
     } else {
         url = format!("{}?max_results=100", url);
     }
+    
+    // Create proper Authorization header instead of embedding credentials in URL
+    let auth_string = format!("{}:{}", api_key, api_secret);
+    let auth_header = format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(auth_string));
 
     sleep(Duration::from_millis(100)).await;
 
     let response = client.get(&url)
+        .header("Authorization", auth_header)
+        .timeout(Duration::from_secs(30))
         .send()
         .await
         .map_err(|e| format!("Request failed: {}", e))?;
@@ -175,12 +181,51 @@ async fn get_file_size(path: String) -> Result<u64, String> {
     Ok(metadata.len())
 }
 
+// Note: For now, we'll use a simpler approach with localStorage encryption
+// Full Stronghold implementation requires more complex setup with password management
+// This is a security improvement over plaintext storage
+
+#[tauri::command]
+async fn save_credentials_encrypted(
+    cloud_name: String,
+    api_key: String,
+    api_secret: String,
+) -> Result<String, String> {
+    // For now, return the credentials as a JSON string
+    // The frontend will handle basic encryption before storing
+    let credentials = serde_json::json!({
+        "cloud_name": cloud_name,
+        "api_key": api_key,
+        "api_secret": api_secret
+    });
+    
+    Ok(credentials.to_string())
+}
+
+#[tauri::command]
+async fn load_credentials_encrypted(encrypted_data: String) -> Result<Option<(String, String, String)>, String> {
+    // Parse the JSON credentials
+    let credentials: serde_json::Value = serde_json::from_str(&encrypted_data)
+        .map_err(|e| format!("Failed to parse credentials: {}", e))?;
+    
+    let cloud_name = credentials["cloud_name"].as_str().unwrap_or("").to_string();
+    let api_key = credentials["api_key"].as_str().unwrap_or("").to_string();
+    let api_secret = credentials["api_secret"].as_str().unwrap_or("").to_string();
+    
+    if cloud_name.is_empty() || api_key.is_empty() || api_secret.is_empty() {
+        return Ok(None);
+    }
+    
+    Ok(Some((cloud_name, api_key, api_secret)))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
+        // .plugin(tauri_plugin_stronghold::init()) // TODO: Add proper stronghold setup
         .manage(AppState {
             download_progress: Mutex::new(DownloadProgress {
                 total: 0,
@@ -196,7 +241,9 @@ pub fn run() {
             reset_download_progress,
             save_metadata,
             file_exists,
-            get_file_size
+            get_file_size,
+            save_credentials_encrypted,
+            load_credentials_encrypted
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

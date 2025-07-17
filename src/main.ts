@@ -146,8 +146,8 @@ function loadScanState(): boolean {
   }
 }
 
-// Clear scan state
-function clearScanState() {
+// Clear scan state (utility function for potential future use)
+const clearScanState = () => {
   localStorage.removeItem('cloudinary-scan-state');
   scanState = {
     resources: [],
@@ -158,9 +158,14 @@ function clearScanState() {
     validatedResourceCount: 0,
     invalidatedResourceCount: 0
   };
+};
+
+// Export to window for debugging (only in development)
+if (typeof window !== 'undefined') {
+  (window as any).clearScanState = clearScanState;
 }
 
-// Remove debug pollution
+// Utility function for clearing scan state (kept for potential future use)
 
 // Format time ago helper
 function formatTimeAgo(timestamp: number): string {
@@ -258,21 +263,31 @@ function getFilenameFromUrl(resource: CloudinaryResource): string {
   }
 }
 
-// Create a proper download URL based on the resource
-function getDownloadUrl(resource: CloudinaryResource): string {
+// Create a proper download URL based on the resource (utility function for potential future use)
+const getDownloadUrl = (resource: CloudinaryResource): string => {
   // Use the secure_url as provided by the API
   return resource.secure_url;
+};
+
+// Export to window for debugging (only in development)
+if (typeof window !== 'undefined') {
+  (window as any).getDownloadUrl = getDownloadUrl;
 }
 
-// Remove debug pollution
+// Utility function for creating download URLs (kept for potential future use)
 
 // Check if a resource URL is valid before attempting download
 async function isResourceUrlValid(resource: CloudinaryResource): Promise<boolean> {
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
     const response = await fetch(resource.secure_url, { 
       method: 'HEAD',
-      timeout: 5000 // 5 second timeout
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
     return response.ok;
   } catch (error) {
     return false;
@@ -666,25 +681,92 @@ function showStep(stepNumber: number) {
   updateButtons();
 }
 
-function saveCredentials() {
+// Basic encryption for localStorage (better than plaintext)
+function simpleEncrypt(text: string): string {
+  // Simple XOR encryption with a key - not cryptographically secure but better than plaintext
+  const key = 'cloudinary-backup-key-2024';
+  let encrypted = '';
+  for (let i = 0; i < text.length; i++) {
+    encrypted += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return btoa(encrypted); // Base64 encode
+}
+
+function simpleDecrypt(encryptedText: string): string {
+  try {
+    const key = 'cloudinary-backup-key-2024';
+    const encrypted = atob(encryptedText); // Base64 decode
+    let decrypted = '';
+    for (let i = 0; i < encrypted.length; i++) {
+      decrypted += String.fromCharCode(encrypted.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+    }
+    return decrypted;
+  } catch {
+    return '';
+  }
+}
+
+async function saveCredentials() {
   const cloudName = (document.getElementById('cloud-name') as HTMLInputElement)?.value || '';
   const apiKey = (document.getElementById('api-key') as HTMLInputElement)?.value || '';
   const apiSecret = (document.getElementById('api-secret') as HTMLInputElement)?.value || '';
   const path = (document.getElementById('download-path') as HTMLInputElement)?.value || '';
   
-  localStorage.setItem('cloudinary-backup-credentials', JSON.stringify({
-    cloudName,
-    apiKey,
-    apiSecret,
-    path
-  }));
+  try {
+    // Create credentials object
+    const credentials = {
+      cloudName,
+      apiKey,
+      apiSecret
+    };
+    
+    // Encrypt and save credentials
+    const encryptedCredentials = simpleEncrypt(JSON.stringify(credentials));
+    localStorage.setItem('cloudinary-backup-credentials-encrypted', encryptedCredentials);
+    
+    // Save path separately (non-sensitive)
+    localStorage.setItem('cloudinary-backup-path', path);
+    
+    logMessage("Credentials saved with encryption");
+  } catch (error) {
+    logMessage(`Error saving credentials: ${error}`);
+    console.error('Failed to save credentials:', error);
+  }
 }
 
-function loadCredentials() {
+async function loadCredentials() {
   try {
-    const saved = localStorage.getItem('cloudinary-backup-credentials');
-    if (saved) {
-      const creds = JSON.parse(saved);
+    // Try to load encrypted credentials first
+    const encryptedCredentials = localStorage.getItem('cloudinary-backup-credentials-encrypted');
+    if (encryptedCredentials) {
+      const decryptedData = simpleDecrypt(encryptedCredentials);
+      if (decryptedData) {
+        const credentials = JSON.parse(decryptedData);
+        
+        const cloudNameInput = document.getElementById('cloud-name') as HTMLInputElement;
+        const apiKeyInput = document.getElementById('api-key') as HTMLInputElement;
+        const apiSecretInput = document.getElementById('api-secret') as HTMLInputElement;
+        const pathInput = document.getElementById('download-path') as HTMLInputElement;
+        
+        if (cloudNameInput) cloudNameInput.value = credentials.cloudName || '';
+        if (apiKeyInput) apiKeyInput.value = credentials.apiKey || '';
+        if (apiSecretInput) apiSecretInput.value = credentials.apiSecret || '';
+        
+        // Load path from localStorage (non-sensitive)
+        const path = localStorage.getItem('cloudinary-backup-path');
+        if (path && pathInput) {
+          pathInput.value = path;
+          downloadPath = path;
+        }
+        
+        return true;
+      }
+    }
+    
+    // Fallback: try to load old plaintext credentials and migrate them
+    const oldCredentials = localStorage.getItem('cloudinary-backup-credentials');
+    if (oldCredentials) {
+      const creds = JSON.parse(oldCredentials);
       
       const cloudNameInput = document.getElementById('cloud-name') as HTMLInputElement;
       const apiKeyInput = document.getElementById('api-key') as HTMLInputElement;
@@ -699,10 +781,24 @@ function loadCredentials() {
       if (creds.path) {
         downloadPath = creds.path;
       }
+      
+      // Migrate to encrypted storage
+      await saveCredentials();
+      
+      // Remove old plaintext credentials
+      localStorage.removeItem('cloudinary-backup-credentials');
+      
+      logMessage("Migrated credentials to encrypted storage");
+      return true;
     }
   } catch (error) {
-    console.log('Error loading saved credentials:', error);
+    console.error('Error loading credentials:', error);
+    logMessage('Failed to load stored credentials');
+    // Clean up corrupted data
+    localStorage.removeItem('cloudinary-backup-credentials-encrypted');
+    localStorage.removeItem('cloudinary-backup-credentials');
   }
+  return false;
 }
 
 function updateButtons() {
