@@ -13,7 +13,7 @@ interface CloudinaryResource {
   width?: number;
   height?: number;
   secure_url: string;
-  tags: string[];
+  tags?: string[];
   context?: Record<string, string>;
 }
 
@@ -40,6 +40,71 @@ let downloadStartTime: number = 0;
 
 // Step management
 let currentStep = 1;
+let isScanning = false;
+
+// Toast notifications
+function showToast(message: string, type: 'success' | 'error' | 'info' = 'info') {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  
+  container.appendChild(toast);
+  
+  // Auto-remove after 3 seconds
+  setTimeout(() => {
+    toast.classList.add('removing');
+    setTimeout(() => {
+      if (toast.parentNode) {
+        toast.parentNode.removeChild(toast);
+      }
+    }, 300);
+  }, 3000);
+}
+
+// Scanning status
+function showScanningStatus() {
+  const scanningStatus = document.getElementById('scanning-status');
+  if (scanningStatus) {
+    scanningStatus.style.display = 'block';
+  }
+}
+
+function hideScanningStatus() {
+  const scanningStatus = document.getElementById('scanning-status');
+  if (scanningStatus) {
+    scanningStatus.style.display = 'none';
+  }
+}
+
+function updateScanningMessage(message: string, count?: string) {
+  const scanningMessage = document.getElementById('scanning-message');
+  const scanningCount = document.getElementById('scanning-count');
+  
+  if (scanningMessage) {
+    scanningMessage.textContent = message;
+  }
+  
+  if (scanningCount && count) {
+    scanningCount.textContent = count;
+  }
+}
+
+// Button loading states
+function setButtonLoading(buttonId: string, loading: boolean) {
+  const button = document.getElementById(buttonId) as HTMLButtonElement;
+  if (button) {
+    if (loading) {
+      button.classList.add('loading');
+      button.disabled = true;
+    } else {
+      button.classList.remove('loading');
+      button.disabled = false;
+    }
+  }
+}
 
 function showStep(stepNumber: number) {
   // Hide all steps
@@ -196,12 +261,24 @@ async function fetchResources() {
   
   if (!cloudName || !apiKey || !apiSecret) {
     logMessage("Please fill in all configuration fields");
+    showToast("Please fill in all configuration fields", 'error');
     return;
   }
 
+  if (isScanning) {
+    return;
+  }
+
+  isScanning = true;
   allResources = [];
   let cursor: string | undefined;
   let totalFetched = 0;
+
+  // Show scanning UI
+  setButtonLoading('fetch-resources', true);
+  showScanningStatus();
+  updateScanningMessage('connecting to cloudinary...');
+  showToast('Starting scan...', 'info');
 
   logMessage("Starting to fetch resources from Cloudinary...");
   
@@ -220,12 +297,19 @@ async function fetchResources() {
       
       logMessage(`Fetched ${response.resources.length} resources (total: ${totalFetched})`);
       
+      // Update scanning UI
+      updateScanningMessage('scanning photos...', `found ${totalFetched} photos`);
+      
       document.getElementById("resources-count")!.textContent = 
         `Found ${totalFetched} resources`;
         
     } while (cursor);
     
     logMessage(`Finished fetching! Total resources: ${totalFetched}`);
+    
+    // Hide scanning UI and show success
+    hideScanningStatus();
+    showToast(`Found ${totalFetched} photos!`, 'success');
     
     // Show the resources section now that we have data
     const resourcesSection = document.querySelector(".resources-section") as HTMLElement;
@@ -246,6 +330,11 @@ async function fetchResources() {
     
   } catch (error) {
     logMessage(`Error fetching resources: ${error}`);
+    hideScanningStatus();
+    showToast(`Error scanning: ${error}`, 'error');
+  } finally {
+    isScanning = false;
+    setButtonLoading('fetch-resources', false);
   }
 }
 

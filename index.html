@@ -97,7 +97,8 @@
 
           <div class="primary-actions">
             <button id="fetch-resources" class="primary-button" disabled>
-              1. scan for photos
+              <span class="button-text">1. scan for photos</span>
+              <span class="button-spinner hidden">scanning...</span>
             </button>
             <div class="help-text">
               this will check your cloudinary account and count how many photos you have.
@@ -105,7 +106,8 @@
             </div>
             
             <button id="start-download" class="primary-button" disabled>
-              2. download all photos
+              <span class="button-text">2. download all photos</span>
+              <span class="button-spinner hidden">downloading...</span>
             </button>
             <div class="help-text">
               this will download every photo to your chosen folder.
@@ -131,6 +133,16 @@
         <div class="progress-info">
           <span id="progress-text">0 / 0 files</span>
           <span id="current-file"></span>
+        </div>
+      </div>
+
+      <div class="scanning-status" id="scanning-status" style="display: none;">
+        <div class="scanning-animation">
+          <div class="scanning-bar"></div>
+        </div>
+        <div class="scanning-text">
+          <span id="scanning-message">connecting to cloudinary...</span>
+          <span id="scanning-count"></span>
         </div>
       </div>
 
@@ -174,6 +186,9 @@
         </div>
         <div id="log-output"></div>
       </div>
+
+      <!-- Toast Container -->
+      <div class="toast-container" id="toast-container"></div>
     </main>
   </body>
 </html>

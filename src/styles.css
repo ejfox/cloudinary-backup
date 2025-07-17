@@ -38,17 +38,134 @@ body {
   color: var(--color-text);
   line-height: 1.4;
   font-size: 14px;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: var(--spacing-large);
 }
 
 .container {
   max-width: 600px;
-  margin: 0;
-  padding: var(--spacing-large);
+  width: 100%;
+  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-large);
 }
 
 /* header */
 .welcome-header {
-  margin-bottom: var(--spacing-large);
+  flex-shrink: 0;
+}
+
+/* scanning animation */
+.scanning-status {
+  background: var(--color-bg);
+  border: 2px solid var(--color-border);
+  padding: var(--spacing);
+  margin-bottom: var(--spacing);
+}
+
+.scanning-animation {
+  height: 4px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  margin-bottom: var(--spacing-small);
+  overflow: hidden;
+}
+
+.scanning-bar {
+  height: 100%;
+  background: var(--color-text);
+  width: 30%;
+  animation: scan 2s linear infinite;
+}
+
+@keyframes scan {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+.scanning-text {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+
+#scanning-count {
+  font-family: var(--font-mono);
+  color: var(--color-text-secondary);
+}
+
+/* toast notifications */
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  width: 300px;
+}
+
+.toast {
+  background: var(--color-bg);
+  border: 2px solid var(--color-border);
+  padding: var(--spacing-small);
+  margin-bottom: var(--spacing-small);
+  animation: toast-slide-in 0.3s ease-out;
+}
+
+.toast.success {
+  border-color: var(--color-success);
+}
+
+.toast.error {
+  border-color: var(--color-error);
+}
+
+.toast.removing {
+  animation: toast-slide-out 0.3s ease-out forwards;
+}
+
+@keyframes toast-slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes toast-slide-out {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+/* button loading states */
+.button-spinner {
+  display: none;
+}
+
+.button-text {
+  display: inline;
+}
+
+.primary-button.loading .button-text {
+  display: none;
+}
+
+.primary-button.loading .button-spinner {
+  display: inline;
 }
 
 .welcome-header h1 {
@@ -65,11 +182,13 @@ body {
 
 /* setup flow */
 .setup-flow {
-  margin-bottom: var(--spacing-large);
+  flex-shrink: 0;
 }
 
 .setup-step {
-  margin-bottom: var(--spacing-large);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing);
 }
 
 .setup-step.hidden {
@@ -210,9 +329,9 @@ button:focus {
 
 /* progress */
 .progress-section {
-  margin-bottom: var(--spacing-large);
   padding: var(--spacing);
   border: 1px solid var(--color-border);
+  flex-shrink: 0;
 }
 
 .progress-section h2 {
@@ -245,7 +364,7 @@ button:focus {
 
 /* resources */
 .resources-section {
-  margin-bottom: var(--spacing-large);
+  flex-shrink: 0;
 }
 
 .resources-section h2 {
@@ -291,7 +410,7 @@ button:focus {
 
 /* log */
 .log-section {
-  margin-bottom: var(--spacing-large);
+  flex-shrink: 0;
 }
 
 .log-section h2 {
@@ -340,8 +459,12 @@ button:focus {
 
 /* responsive */
 @media (max-width: 600px) {
-  .container {
+  body {
     padding: var(--spacing);
+  }
+  
+  .container {
+    max-width: 100%;
   }
   
   .path-selector {
@@ -350,5 +473,35 @@ button:focus {
   
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+  
+  .progress-info {
+    flex-direction: column;
+    gap: var(--spacing-small);
+  }
+  
+  .toast-container {
+    right: var(--spacing);
+    width: calc(100vw - var(--spacing) * 2);
+  }
+}
+
+/* Responsive adjustments for different window sizes */
+@media (max-width: 500px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-small);
+  }
+  
+  .scanning-text {
+    flex-direction: column;
+    gap: var(--spacing-small);
+    text-align: center;
+  }
+}
+
+@media (min-width: 800px) {
+  .stats-grid {
+    grid-template-columns: repeat(4, 1fr);
   }
 }

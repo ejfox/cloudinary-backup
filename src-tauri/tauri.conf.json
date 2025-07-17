@@ -13,6 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
         "title": "Cloudinary Backup",
         "width": 1000,
         "height": 700,
@@ -21,8 +22,7 @@
       }
     ],
     "security": {
-      "csp": null,
-      "capabilities": ["default"]
+      "csp": null
     }
   },
   "bundle": {

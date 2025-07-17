@@ -19,7 +19,7 @@ struct CloudinaryResource {
     width: Option<u32>,
     height: Option<u32>,
     secure_url: String,
-    tags: Vec<String>,
+    tags: Option<Vec<String>>,
     context: Option<HashMap<String, String>>,
 }
 
@@ -68,14 +68,17 @@ async fn fetch_cloudinary_resources(
         .await
         .map_err(|e| format!("Request failed: {}", e))?;
 
-    if !response.status().is_success() {
-        return Err(format!("API request failed with status: {}", response.status()));
+    let status = response.status();
+    if !status.is_success() {
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(format!("API request failed with status: {} - {}", status, error_text));
     }
 
-    let cloudinary_response: CloudinaryResponse = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
+    let response_text = response.text().await
+        .map_err(|e| format!("Failed to read response text: {}", e))?;
+    
+    let cloudinary_response: CloudinaryResponse = serde_json::from_str(&response_text)
+        .map_err(|e| format!("Failed to parse response: {} - Response body: {}", e, response_text))?;
 
     Ok(cloudinary_response)
 }
