@@ -1043,6 +1043,115 @@ async function fetchResources() {
   }
 }
 
+// Memory-efficient batch processing configuration
+const DOWNLOAD_BATCH_SIZE = 50; // Process downloads in batches of 50 (good for most systems)
+const LARGE_COLLECTION_BATCH_SIZE = 25; // Smaller batches for collections >5000 photos
+const BATCH_DELAY_MS = 100; // Small delay between batches to prevent overwhelming
+const LARGE_COLLECTION_THRESHOLD = 5000; // Switch to smaller batches for large collections
+
+// Determine optimal batch size based on collection size
+function getOptimalBatchSize(totalResources: number): number {
+  if (totalResources > LARGE_COLLECTION_THRESHOLD) {
+    logMessage(`Large collection detected (${totalResources} files), using smaller batches for memory efficiency`);
+    return LARGE_COLLECTION_BATCH_SIZE;
+  }
+  return DOWNLOAD_BATCH_SIZE;
+}
+
+// Process downloads in batches to maintain predictable memory usage
+async function processBatchedDownloads(resourcesToDownload: CloudinaryResource[]) {
+  const batchSize = getOptimalBatchSize(resourcesToDownload.length);
+  const totalBatches = Math.ceil(resourcesToDownload.length / batchSize);
+  let globalSuccessCount = 0;
+  let globalSkipCount = 0;
+  
+  logMessage(`Processing ${resourcesToDownload.length} files in ${totalBatches} batches of ${batchSize}`);
+  
+  for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+    // Check if download was cancelled
+    if (downloadCancelled) {
+      logMessage("Download cancelled by user");
+      showToast("Download cancelled", 'info');
+      break;
+    }
+    
+    // Calculate batch boundaries
+    const batchStart = batchIndex * batchSize;
+    const batchEnd = Math.min(batchStart + batchSize, resourcesToDownload.length);
+    const currentBatch = resourcesToDownload.slice(batchStart, batchEnd);
+    
+    logMessage(`Processing batch ${batchIndex + 1}/${totalBatches} (${currentBatch.length} files)`);
+    
+    // Process current batch
+    let batchSuccessCount = 0;
+    let batchSkipCount = 0;
+    
+    for (let i = 0; i < currentBatch.length; i++) {
+      // Check cancellation again within batch
+      if (downloadCancelled) {
+        break;
+      }
+      
+      const resource = currentBatch[i];
+      const success = await downloadWithRetry(resource);
+      
+      if (success) {
+        const fileName = getFilenameFromUrl(resource);
+        if (downloadState.downloadedFiles.includes(fileName)) {
+          batchSkipCount++;
+          globalSkipCount++;
+        } else {
+          batchSuccessCount++;
+          globalSuccessCount++;
+        }
+      }
+      
+      // Update progress UI
+      const progress: DownloadProgress = await invoke("get_download_progress");
+      updateProgressUI(progress);
+      updateDownloadStats();
+    }
+    
+    // Save state after each batch
+    saveDownloadState();
+    
+    logMessage(`Batch ${batchIndex + 1} completed: ${batchSuccessCount} downloaded, ${batchSkipCount} skipped`);
+    
+    // Memory management: Clear processed batch from memory
+    // (The batch slice goes out of scope, eligible for garbage collection)
+    
+    // Small delay between batches to prevent overwhelming the system
+    if (batchIndex < totalBatches - 1) {
+      await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+    }
+  }
+  
+  // Final summary
+  const totalDownloaded = downloadState.downloadedFiles.length;
+  const totalFailed = downloadState.failedFiles.length;
+  
+  if (totalFailed > 0) {
+    logMessage(`Download completed! Downloaded: ${totalDownloaded}, Failed: ${totalFailed}, Skipped: ${globalSkipCount}`);
+    showToast(`Download completed with ${totalFailed} failed files`, 'error');
+    
+    // Show failed files summary
+    const failedBy404 = downloadState.failedFiles.filter(f => f.error.includes('404')).length;
+    const failedByOther = totalFailed - failedBy404;
+    
+    if (failedBy404 > 0) {
+      logMessage(`Files deleted from Cloudinary (404 errors): ${failedBy404}`);
+      logMessage(`These files are listed in your account but were deleted from Cloudinary storage`);
+    }
+    if (failedByOther > 0) {
+      logMessage(`Network/other errors: ${failedByOther}`);
+    }
+  } else {
+    logMessage("Download completed successfully!");
+    showToast("All files downloaded successfully!", 'success');
+    clearDownloadState(); // Clear state on successful completion
+  }
+}
+
 async function startDownload() {
   if (!downloadPath || allResources.length === 0) {
     logMessage("No download path selected or no resources to download");
@@ -1065,7 +1174,7 @@ async function startDownload() {
   try {
     // Check if we can resume an existing download
     const hasExistingState = loadDownloadState();
-    let resourcesToDownload = allResources;
+    let resourcesToDownload = [...allResources]; // Create copy to avoid modifying original
     
     if (hasExistingState && canResumeDownload()) {
       const shouldResume = confirm(`Found an incomplete download with ${downloadState.downloadedFiles.length} files already downloaded. Resume download?`);
@@ -1095,70 +1204,12 @@ async function startDownload() {
     
     await invoke("reset_download_progress", { total: allResources.length });
     
-    logMessage(`Starting download of ${resourcesToDownload.length} files (${formatBytes(totalBytes)})...`);
+    const batchSize = getOptimalBatchSize(resourcesToDownload.length);
+    logMessage(`Starting batched download of ${resourcesToDownload.length} files (${formatBytes(totalBytes)}) in batches of ${batchSize}...`);
     showToast(`Starting download of ${resourcesToDownload.length} files`, 'info');
     
-    let successCount = 0;
-    let skipCount = 0;
-    
-    for (let i = 0; i < resourcesToDownload.length; i++) {
-      // Check if download was cancelled
-      if (downloadCancelled) {
-        logMessage("Download cancelled by user");
-        showToast("Download cancelled", 'info');
-        break;
-      }
-      
-      const resource = resourcesToDownload[i];
-      
-      const success = await downloadWithRetry(resource);
-      if (success) {
-        successCount++;
-        const fileName = getFilenameFromUrl(resource);
-        if (downloadState.downloadedFiles.includes(fileName)) {
-          // This was already downloaded, so it was skipped
-          skipCount++;
-        }
-      }
-      
-      // Update progress UI
-      const progress: DownloadProgress = await invoke("get_download_progress");
-      updateProgressUI(progress);
-      updateDownloadStats();
-      
-      // Save state periodically
-      if (i % 5 === 0) {
-        saveDownloadState();
-      }
-    }
-    
-    // Final state save
-    saveDownloadState();
-    
-    const totalDownloaded = downloadState.downloadedFiles.length;
-    const totalFailed = downloadState.failedFiles.length;
-    const totalSkipped = skipCount;
-    
-    if (totalFailed > 0) {
-      logMessage(`Download completed! Downloaded: ${totalDownloaded}, Failed: ${totalFailed}, Skipped: ${totalSkipped}`);
-      showToast(`Download completed with ${totalFailed} failed files`, 'error');
-      
-      // Show failed files summary
-      const failedBy404 = downloadState.failedFiles.filter(f => f.error.includes('404')).length;
-      const failedByOther = totalFailed - failedBy404;
-      
-      if (failedBy404 > 0) {
-        logMessage(`Files deleted from Cloudinary (404 errors): ${failedBy404}`);
-        logMessage(`These files are listed in your account but were deleted from Cloudinary storage`);
-      }
-      if (failedByOther > 0) {
-        logMessage(`Network/other errors: ${failedByOther}`);
-      }
-    } else {
-      logMessage("Download completed successfully!");
-      showToast("All files downloaded successfully!", 'success');
-      clearDownloadState(); // Clear state on successful completion
-    }
+    // Process downloads in batches for memory efficiency
+    await processBatchedDownloads(resourcesToDownload);
     
   } catch (error) {
     logMessage(`Error during download: ${error}`);
