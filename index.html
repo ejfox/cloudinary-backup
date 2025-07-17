@@ -10,40 +10,120 @@
 
   <body>
     <main class="container">
-      <h1>Cloudinary Backup Tool</h1>
-      <p>Backup your high-resolution photos and metadata from Cloudinary</p>
+      <!-- Welcome Header -->
+      <div class="welcome-header">
+        <h1>cloudinary backup</h1>
+        <p class="subtitle">this tool will help you download all your photos from cloudinary</p>
+        <p class="subtitle">it's a 3-step process: credentials → folder → download</p>
+      </div>
 
-      <div class="config-section">
-        <h2>Configuration</h2>
-        <div class="form-group">
-          <label for="cloud-name">Cloud Name:</label>
-          <input type="text" id="cloud-name" placeholder="your-cloud-name" />
+      <!-- Setup Flow -->
+      <div class="setup-flow">
+        
+        <!-- Step 1: Get Your Credentials -->
+        <div class="setup-step active" id="step-1">
+          <div class="step-header">
+            <h2>step 1: get your cloudinary credentials</h2>
+            <p>we need these to access your photos. don't worry, they stay on your computer.</p>
+          </div>
+
+          <div class="form-group">
+            <label for="cloud-name">cloud name</label>
+            <input type="text" id="cloud-name" placeholder="my-company" />
+            <div class="help-text">
+              this is your unique cloudinary identifier. 
+              go to console.cloudinary.com → account details → look for "cloud name"
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="api-key">api key</label>
+            <input type="text" id="api-key" placeholder="123456789012345" />
+            <div class="help-text">
+              15-digit number from the same account details page.
+              copy the whole thing exactly as shown.
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="api-secret">api secret</label>
+            <input type="password" id="api-secret" placeholder="enter your api secret" />
+            <div class="help-text">
+              still on account details page. click "reveal" next to api secret.
+              copy the letters and numbers that appear.
+            </div>
+          </div>
+
+          <div class="dashboard-link">
+            <a href="https://console.cloudinary.com/console" target="_blank" rel="noopener noreferrer" class="dashboard-button">
+              → open cloudinary dashboard in new tab
+            </a>
+            <div class="help-text">
+              once you fill out all 3 fields above, you'll automatically move to step 2
+            </div>
+          </div>
         </div>
-        <div class="form-group">
-          <label for="api-key">API Key:</label>
-          <input type="text" id="api-key" placeholder="your-api-key" />
+
+        <!-- Step 2: Choose Backup Location -->
+        <div class="setup-step hidden" id="step-2">
+          <div class="step-header">
+            <h2>step 2: choose where to save your photos</h2>
+            <p>pick a folder with enough space. external drive recommended.</p>
+          </div>
+
+          <div class="form-group">
+            <label for="download-path">backup folder</label>
+            <div class="path-selector">
+              <input type="text" id="download-path" placeholder="no folder selected" readonly />
+              <button type="button" id="select-folder">
+                browse folders
+              </button>
+            </div>
+            <div class="help-text">
+              click "browse folders" to pick where your photos will be saved.
+              make sure you have enough free space - this could be several GB.
+              once you select a folder, you'll move to step 3.
+            </div>
+          </div>
         </div>
-        <div class="form-group">
-          <label for="api-secret">API Secret:</label>
-          <input type="password" id="api-secret" placeholder="your-api-secret" />
-        </div>
-        <div class="form-group">
-          <label for="download-path">Download Folder:</label>
-          <div class="path-selector">
-            <input type="text" id="download-path" placeholder="Select download folder..." readonly />
-            <button type="button" id="select-folder">Browse</button>
+
+        <!-- Step 3: Start Backup -->
+        <div class="setup-step hidden" id="step-3">
+          <div class="step-header">
+            <h2>step 3: download your photos</h2>
+            <p>first scan to see what you have, then download everything</p>
+          </div>
+
+          <div class="primary-actions">
+            <button id="fetch-resources" class="primary-button" disabled>
+              1. scan for photos
+            </button>
+            <div class="help-text">
+              this will check your cloudinary account and count how many photos you have.
+              it won't download anything yet, just make a list.
+            </div>
+            
+            <button id="start-download" class="primary-button" disabled>
+              2. download all photos
+            </button>
+            <div class="help-text">
+              this will download every photo to your chosen folder.
+              depending on how many photos you have, this could take a while.
+            </div>
+            
+            <button id="export-metadata" class="secondary-button" disabled>
+              3. export metadata (optional)
+            </button>
+            <div class="help-text">
+              saves a json file with info about each photo (tags, upload date, etc).
+              only available after scanning.
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="actions-section">
-        <button id="fetch-resources" disabled>Fetch Resources</button>
-        <button id="start-download" disabled>Start Download</button>
-        <button id="export-metadata" disabled>Export Metadata</button>
-      </div>
-
       <div class="progress-section" style="display: none;">
-        <h2>Progress</h2>
+        <h2>progress</h2>
         <div class="progress-bar">
           <div class="progress-fill" id="progress-fill"></div>
         </div>
@@ -53,25 +133,25 @@
         </div>
       </div>
 
-      <div class="resources-section">
-        <h2>Resources Found</h2>
-        <div id="resources-count">No resources fetched yet</div>
+      <div class="resources-section" style="display: none;">
+        <h2>what we found</h2>
+        <div id="resources-count">scan your photos first to see what's in your account</div>
         <div id="resources-stats" style="display: none;">
           <div class="stats-grid">
             <div class="stat-item">
-              <span class="stat-label">Total Size:</span>
-              <span id="total-size">0 MB</span>
+              <span class="stat-label">total size</span>
+              <span id="total-size">0 mb</span>
             </div>
             <div class="stat-item">
-              <span class="stat-label">Estimated Time:</span>
+              <span class="stat-label">estimated time</span>
               <span id="estimated-time">0 min</span>
             </div>
             <div class="stat-item">
-              <span class="stat-label">Downloaded:</span>
-              <span id="downloaded-size">0 MB</span>
+              <span class="stat-label">downloaded</span>
+              <span id="downloaded-size">0 mb</span>
             </div>
             <div class="stat-item">
-              <span class="stat-label">Remaining Time:</span>
+              <span class="stat-label">remaining time</span>
               <span id="remaining-time">0 min</span>
             </div>
           </div>
@@ -79,8 +159,18 @@
         <div id="resources-list"></div>
       </div>
 
-      <div class="log-section">
-        <h2>Log</h2>
+      <div class="log-toggle">
+        <button id="toggle-log" class="log-toggle-button">
+          show log
+        </button>
+      </div>
+
+      <div class="log-section" style="display: none;">
+        <h2>what's happening</h2>
+        <div class="help-text">
+          this shows you what the tool is doing in real-time.
+          if something goes wrong, check here for error messages.
+        </div>
         <div id="log-output"></div>
       </div>
     </main>

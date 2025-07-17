@@ -38,6 +38,57 @@ let totalBytes: number = 0;
 let downloadedBytes: number = 0;
 let downloadStartTime: number = 0;
 
+// Step management
+let currentStep = 1;
+
+function showStep(stepNumber: number) {
+  // Hide all steps
+  document.querySelectorAll('.setup-step').forEach(step => {
+    step.classList.remove('active');
+    step.classList.add('hidden');
+  });
+  
+  // Show current step
+  const currentStepEl = document.getElementById(`step-${stepNumber}`);
+  if (currentStepEl) {
+    currentStepEl.classList.remove('hidden');
+    currentStepEl.classList.add('active');
+  }
+  
+  currentStep = stepNumber;
+  updateButtons();
+}
+
+function updateButtons() {
+  const cloudName = (document.getElementById('cloud-name') as HTMLInputElement)?.value || '';
+  const apiKey = (document.getElementById('api-key') as HTMLInputElement)?.value || '';
+  const apiSecret = (document.getElementById('api-secret') as HTMLInputElement)?.value || '';
+  const path = (document.getElementById('download-path') as HTMLInputElement)?.value || '';
+  
+  const step1Complete = cloudName && apiKey && apiSecret;
+  const step2Complete = step1Complete && path;
+  
+  if (step1Complete && currentStep === 1) {
+    showStep(2);
+  }
+  
+  if (step2Complete && currentStep === 2) {
+    showStep(3);
+  }
+  
+  // Update button states
+  const fetchButton = document.getElementById('fetch-resources') as HTMLButtonElement;
+  const downloadButton = document.getElementById('start-download') as HTMLButtonElement;
+  
+  if (fetchButton) {
+    fetchButton.disabled = !step2Complete;
+  }
+  
+  if (downloadButton) {
+    downloadButton.disabled = allResources.length === 0;
+  }
+}
+
 function logMessage(message: string) {
   const logOutput = document.getElementById("log-output");
   if (logOutput) {
@@ -88,7 +139,7 @@ async function selectFolder() {
       downloadPath = selected;
       (document.getElementById("download-path") as HTMLInputElement).value = selected;
       logMessage(`Selected download folder: ${selected}`);
-      updateUI();
+      updateButtons();
     }
   } catch (error) {
     logMessage(`Error selecting folder: ${error}`);
@@ -132,6 +183,10 @@ async function fetchResources() {
     } while (cursor);
     
     logMessage(`Finished fetching! Total resources: ${totalFetched}`);
+    
+    // Show the resources section now that we have data
+    const resourcesSection = document.querySelector(".resources-section") as HTMLElement;
+    resourcesSection.style.display = "block";
     
     // Calculate total size and show stats
     totalBytes = allResources.reduce((sum, resource) => sum + resource.bytes, 0);
@@ -256,16 +311,33 @@ async function exportMetadata() {
   }
 }
 
+function toggleLog() {
+  const logSection = document.querySelector(".log-section") as HTMLElement;
+  const toggleButton = document.getElementById("toggle-log") as HTMLButtonElement;
+  
+  if (logSection.style.display === "none") {
+    logSection.style.display = "block";
+    toggleButton.textContent = "hide log";
+  } else {
+    logSection.style.display = "none";
+    toggleButton.textContent = "show log";
+  }
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("select-folder")?.addEventListener("click", selectFolder);
   document.getElementById("fetch-resources")?.addEventListener("click", fetchResources);
   document.getElementById("start-download")?.addEventListener("click", startDownload);
   document.getElementById("export-metadata")?.addEventListener("click", exportMetadata);
+  document.getElementById("toggle-log")?.addEventListener("click", toggleLog);
   
-  document.getElementById("cloud-name")?.addEventListener("input", updateUI);
-  document.getElementById("api-key")?.addEventListener("input", updateUI);
-  document.getElementById("api-secret")?.addEventListener("input", updateUI);
+  // Add input listeners for step progression
+  document.getElementById("cloud-name")?.addEventListener("input", updateButtons);
+  document.getElementById("api-key")?.addEventListener("input", updateButtons);
+  document.getElementById("api-secret")?.addEventListener("input", updateButtons);
   
-  updateUI();
+  // Initialize with step 1
+  showStep(1);
+  updateButtons();
   logMessage("Cloudinary Backup Tool ready");
 });
