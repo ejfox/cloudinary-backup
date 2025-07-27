@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { join, documentDir } from "@tauri-apps/api/path";
+import PhotoDatabase, { DatabasePhoto } from './database';
 
 interface CloudinaryResource {
   public_id: string;
@@ -37,6 +38,7 @@ let downloadPath: string = "";
 let totalBytes: number = 0;
 let downloadedBytes: number = 0;
 let downloadStartTime: number = 0;
+let photoDatabase: PhotoDatabase | null = null;
 
 // Download state management
 interface DownloadState {
@@ -372,6 +374,11 @@ async function downloadWithRetry(resource: CloudinaryResource, maxRetries: numbe
       downloadedBytes += resource.bytes;
       downloadState.downloadedFiles.push(fileName);
       
+      // Update database
+      if (photoDatabase) {
+        await photoDatabase.updatePhotoDownloadStatus(resource.public_id, true, filePath);
+      }
+      
       // Save state every 10 downloads
       if (downloadState.downloadedFiles.length % 10 === 0) {
         saveDownloadState();
@@ -389,6 +396,12 @@ async function downloadWithRetry(resource: CloudinaryResource, maxRetries: numbe
           error: "File deleted from Cloudinary (404)",
           retryCount: attempt + 1
         });
+        
+        // Update database for failed download
+        if (photoDatabase) {
+          await photoDatabase.updatePhotoDownloadStatus(resource.public_id, false, undefined, "File deleted from Cloudinary (404)");
+        }
+        
         return false;
       }
       
@@ -404,6 +417,12 @@ async function downloadWithRetry(resource: CloudinaryResource, maxRetries: numbe
           error: errorStr,
           retryCount: attempt + 1
         });
+        
+        // Update database for failed download
+        if (photoDatabase) {
+          await photoDatabase.updatePhotoDownloadStatus(resource.public_id, false, undefined, errorStr);
+        }
+        
         logMessage(`Error downloading ${fileName}: ${error}`);
         return false;
       }
@@ -872,6 +891,96 @@ function updateUI() {
   (document.getElementById("export-metadata") as HTMLButtonElement).disabled = !canDownload;
 }
 
+async function initializeDatabase() {
+  if (!downloadPath) {
+    return;
+  }
+  
+  try {
+    photoDatabase = new PhotoDatabase(downloadPath);
+    await photoDatabase.initialize();
+    logMessage("SQLite database initialized for metadata storage");
+    showToast("Database ready for metadata storage", 'success');
+  } catch (error) {
+    logMessage(`Error initializing database: ${error}`);
+    showToast(`Database error: ${error}`, 'error');
+  }
+}
+
+// Convert Cloudinary resource to database photo
+function convertResourceToDbPhoto(resource: CloudinaryResource): Omit<DatabasePhoto, 'id'> {
+  return {
+    public_id: resource.public_id,
+    format: resource.format,
+    version: resource.version,
+    resource_type: resource.resource_type,
+    resource_kind: resource.resource_kind,
+    created_at: resource.created_at,
+    bytes: resource.bytes,
+    width: resource.width,
+    height: resource.height,
+    secure_url: resource.secure_url,
+    is_downloaded: false,
+    download_failed: false
+  };
+}
+
+async function saveToDatabase(validResources: CloudinaryResource[], invalidResources: CloudinaryResource[], cloudName: string) {
+  if (!photoDatabase) {
+    logMessage("Database not initialized, skipping database save");
+    return;
+  }
+  
+  try {
+    // Create backup session
+    const sessionId = await photoDatabase.createBackupSession({
+      session_type: 'scan',
+      started_at: new Date().toISOString(),
+      cloudinary_cloud_name: cloudName,
+      total_photos: validResources.length + invalidResources.length,
+      successful_photos: validResources.length,
+      failed_photos: invalidResources.length,
+      total_bytes: validResources.reduce((sum, r) => sum + r.bytes, 0),
+      notes: `Scanned ${validResources.length} accessible photos, filtered ${invalidResources.length} deleted/inaccessible files`
+    });
+    
+    // Insert valid photos in batches
+    const batchSize = 100;
+    for (let i = 0; i < validResources.length; i += batchSize) {
+      const batch = validResources.slice(i, i + batchSize).map(convertResourceToDbPhoto);
+      await photoDatabase.insertPhotoBatch(batch);
+      
+      // Insert tags and context for each photo in the batch
+      for (let j = 0; j < batch.length; j++) {
+        const originalResource = validResources[i + j];
+        const photoId = i + j + 1; // Assuming sequential IDs
+        
+        if (originalResource.tags && originalResource.tags.length > 0) {
+          await photoDatabase.insertTags(photoId, originalResource.tags);
+        }
+        
+        if (originalResource.context && Object.keys(originalResource.context).length > 0) {
+          await photoDatabase.insertContext(photoId, originalResource.context);
+        }
+      }
+      
+      logMessage(`Saved batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(validResources.length/batchSize)} to database`);
+    }
+    
+    // Update session as completed
+    await photoDatabase.updateBackupSession(sessionId, {
+      completed_at: new Date().toISOString()
+    });
+    
+    logMessage(`Successfully saved ${validResources.length} photos to SQLite database`);
+    showToast(`Database updated with ${validResources.length} photos`, 'success');
+    
+  } catch (error) {
+    logMessage(`Error saving to database: ${error}`);
+    showToast(`Database save error: ${error}`, 'error');
+  }
+}
+
 async function selectFolder() {
   try {
     const selected = await open({
@@ -886,6 +995,9 @@ async function selectFolder() {
       logMessage(`Selected download folder: ${selected}`);
       saveCredentials();
       updateButtons();
+      
+      // Initialize database when folder is selected
+      await initializeDatabase();
       
       // Auto-show folder analysis if we have scanned resources
       if (allResources.length > 0) {
@@ -1006,6 +1118,9 @@ async function fetchResources() {
     
     // Save scan state for future use
     saveScanState(validCount, invalidCount);
+    
+    // Save to SQLite database if available
+    await saveToDatabase(valid, invalid, cloudName);
     
     // Show the resources section now that we have data
     const resourcesSection = document.querySelector(".resources-section") as HTMLElement;
@@ -1259,16 +1374,26 @@ async function exportMetadata() {
   }
 
   try {
+    // Export traditional JSON metadata
     const metadataPath = await join(downloadPath, "metadata.json");
     await invoke("save_metadata", {
       resources: allResources,
       filePath: metadataPath,
     });
     
-    logMessage(`Metadata exported to: ${metadataPath}`);
+    logMessage(`JSON metadata exported to: ${metadataPath}`);
+    
+    // Database export temporarily disabled - will be re-enabled after testing
+    if (photoDatabase) {
+      logMessage(`SQLite database available at download folder`);
+      showToast(`Exported metadata to JSON (SQLite database saved separately)`, 'success');
+    } else {
+      showToast(`Exported metadata to JSON`, 'success');
+    }
     
   } catch (error) {
     logMessage(`Error exporting metadata: ${error}`);
+    showToast(`Export error: ${error}`, 'error');
   }
 }
 
