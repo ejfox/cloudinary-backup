@@ -12,9 +12,24 @@
     <main class="container">
       <!-- Welcome Header -->
       <div class="welcome-header">
-        <h1>cloudinary backup</h1>
-        <p class="subtitle">this tool will help you download all your photos from cloudinary</p>
-        <p class="subtitle">it's a 3-step process: credentials → folder → download</p>
+        <h1>🔄 cloudinary backup</h1>
+        <div class="big-subtitle">
+          <strong>GET ALL YOUR PHOTOS OUT OF CLOUDINARY</strong>
+        </div>
+        <div class="simple-explanation">
+          Super simple: Just fill out 3 things, pick a folder, click download. Done.
+        </div>
+        <div class="simple-steps">
+          <div class="step-indicator">
+            <span class="step-number">1️⃣</span> Enter your Cloudinary login info
+          </div>
+          <div class="step-indicator">
+            <span class="step-number">2️⃣</span> Pick where to save photos 
+          </div>
+          <div class="step-indicator">
+            <span class="step-number">3️⃣</span> Download everything
+          </div>
+        </div>
       </div>
 
       <!-- Setup Flow -->
@@ -22,45 +37,45 @@
         
         <!-- Step 1: Get Your Credentials -->
         <div class="setup-step active" id="step-1">
-          <div class="step-header">
-            <h2>step 1: get your cloudinary credentials</h2>
-            <p>we need these to access your photos. don't worry, they stay on your computer.</p>
+          <div class="step-header big-step">
+            <h2>🔐 STEP 1: ENTER YOUR CLOUDINARY LOGIN</h2>
+            <p class="step-explanation">We need these 3 things to get your photos. They stay private on your computer.</p>
+            <div class="why-need-this">
+              <strong>Why do we need this?</strong> It's like showing your ID to get into your own house - we need permission to see your photos.
+            </div>
           </div>
 
           <div class="form-group">
-            <label for="cloud-name">cloud name</label>
+            <label for="cloud-name">📝 #1: CLOUD NAME</label>
             <input type="text" id="cloud-name" placeholder="my-company" />
             <div class="help-text">
-              this is your unique cloudinary identifier. 
-              go to console.cloudinary.com → account details → look for "cloud name"
+              <strong>Where to find this:</strong> Go to console.cloudinary.com → Account Details → copy "Cloud Name" exactly.
             </div>
           </div>
 
           <div class="form-group">
-            <label for="api-key">api key</label>
+            <label for="api-key">🔑 #2: API KEY (the long number)</label>
             <input type="text" id="api-key" placeholder="123456789012345" />
             <div class="help-text">
-              15-digit number from the same account details page.
-              copy the whole thing exactly as shown.
+              <strong>Where to find this:</strong> Same Account Details page. Copy the 15-digit number under "API Key".
             </div>
           </div>
 
           <div class="form-group">
-            <label for="api-secret">api secret</label>
+            <label for="api-secret">🔒 #3: API SECRET (click "reveal" first)</label>
             <input type="password" id="api-secret" placeholder="enter your api secret" />
             <div class="help-text">
-              still on account details page. click "reveal" next to api secret.
-              copy the letters and numbers that appear.
+              <strong>Where to find this:</strong> Account Details page. Click "Reveal" next to "API Secret", then copy what appears.
             </div>
           </div>
 
           <div class="dashboard-link">
             <a href="https://console.cloudinary.com/console" target="_blank" rel="noopener noreferrer" class="dashboard-button">
-              → open cloudinary dashboard in new tab
+              🚀 OPEN CLOUDINARY DASHBOARD (new tab)
             </a>
             <div class="help-text">
-              once you fill out all 3 fields above, you'll automatically move to step 2.
-              your credentials are saved locally so you don't have to re-enter them.
+              <strong>What happens next:</strong> Fill out all 3 fields above and you'll automatically move to step 2. 
+              Your login info is saved so you won't have to enter it again.
             </div>
           </div>
 
@@ -76,69 +91,70 @@
 
         <!-- Step 2: Choose Backup Location -->
         <div class="setup-step hidden" id="step-2">
-          <div class="step-header">
-            <h2>step 2: choose where to save your photos</h2>
-            <p>pick a folder with enough space. external drive recommended.</p>
+          <div class="step-header big-step">
+            <h2>📁 STEP 2: PICK WHERE TO SAVE ALL YOUR PHOTOS</h2>
+            <p class="step-explanation">Choose a folder with lots of free space. Your photos might be several gigabytes.</p>
+            <div class="why-need-this">
+              <strong>Why pick a good spot?</strong> You're about to download ALL your photos. Make sure you have enough room!
+            </div>
           </div>
 
           <div class="form-group">
-            <label for="download-path">backup folder</label>
+            <label for="download-path">🗂️ CHOOSE YOUR BACKUP FOLDER</label>
             <div class="path-selector">
-              <input type="text" id="download-path" placeholder="no folder selected" readonly />
+              <input type="text" id="download-path" placeholder="👆 Click button to pick folder" readonly />
               <button type="button" id="select-folder">
-                browse folders
+                📂 BROWSE & PICK FOLDER
               </button>
             </div>
             <div class="help-text">
-              click "browse folders" to pick where your photos will be saved.
-              make sure you have enough free space - this could be several GB.
-              once you select a folder, you'll move to step 3.
+              <strong>What happens:</strong> Click the button above, pick a folder with lots of free space (external drive recommended), and you'll automatically move to step 3.
             </div>
           </div>
         </div>
 
         <!-- Step 3: Start Backup -->
         <div class="setup-step hidden" id="step-3">
-          <div class="step-header">
-            <h2>step 3: download your photos</h2>
-            <p>first scan to see what you have, then download everything</p>
+          <div class="step-header big-step">
+            <h2>🚀 STEP 3: GET ALL YOUR PHOTOS!</h2>
+            <p class="step-explanation">Two clicks: First see what you have, then download everything to your computer.</p>
+            <div class="why-need-this">
+              <strong>Almost done!</strong> Click "scan" to count your photos, then "download" to get them all.
+            </div>
           </div>
 
           <div class="primary-actions">
             <button id="fetch-resources" class="primary-button" disabled>
-              <span class="button-text">1. scan for photos</span>
-              <span class="button-spinner hidden">scanning...</span>
+              <span class="button-text">🔍 1. SCAN & COUNT YOUR PHOTOS</span>
+              <span class="button-spinner hidden">📊 scanning cloudinary...</span>
             </button>
             <div class="help-text">
-              this will check your cloudinary account and count how many photos you have.
-              it won't download anything yet, just make a list.
+              <strong>What this does:</strong> Looks at your Cloudinary account and counts how many photos you have. No downloading yet, just making a list. Takes about 30 seconds.
             </div>
             
             <button id="start-download" class="primary-button" disabled>
-              <span class="button-text">2. download all photos</span>
-              <span class="button-spinner hidden">downloading...</span>
+              <span class="button-text">⬇️ 2. DOWNLOAD ALL PHOTOS</span>
+              <span class="button-spinner hidden">📥 downloading...</span>
             </button>
             <button id="cancel-download" class="secondary-button" style="display: none;">
-              cancel download
+              ❌ STOP DOWNLOAD
             </button>
             <div class="help-text">
-              this will download every photo to your chosen folder.
-              depending on how many photos you have, this could take a while.
+              <strong>What this does:</strong> Downloads every single photo from Cloudinary to your chosen folder. This might take 10 minutes to several hours depending on how many photos you have.
             </div>
             
             <button id="export-metadata" class="secondary-button" disabled>
-              3. export metadata (optional)
+              📋 3. SAVE PHOTO INFO (OPTIONAL)
             </button>
             <div class="help-text">
-              saves a json file with info about each photo (tags, upload date, etc).
-              only available after scanning.
+              <strong>What this does:</strong> Saves a file with details about each photo (tags, upload date, etc). Only tech-savvy users need this. Only works after scanning.
             </div>
           </div>
         </div>
       </div>
 
       <div class="progress-section" style="display: none;">
-        <h2>progress</h2>
+        <h2>📊 DOWNLOAD PROGRESS</h2>
         <div class="progress-bar">
           <div class="progress-fill" id="progress-fill"></div>
         </div>
@@ -159,50 +175,51 @@
       </div>
 
       <div class="download-folder-status" id="download-folder-status" style="display: none;">
-        <h2>download folder analysis</h2>
+        <h2>📁 CHECKING YOUR DOWNLOAD FOLDER</h2>
         <div class="folder-analysis">
           <div class="analysis-item">
-            <span class="analysis-label">download folder:</span>
+            <span class="analysis-label">📂 your backup folder:</span>
             <span id="analysis-folder-path"></span>
           </div>
           <div class="analysis-item">
-            <span class="analysis-label">already downloaded:</span>
+            <span class="analysis-label">✅ already saved on your computer:</span>
             <span id="analysis-existing-count"></span>
           </div>
           <div class="analysis-item">
-            <span class="analysis-label">missing files:</span>
+            <span class="analysis-label">❌ still missing from your computer:</span>
             <span id="analysis-missing-count"></span>
           </div>
           <div class="analysis-item">
-            <span class="analysis-label">completion:</span>
+            <span class="analysis-label">📊 how much you have so far:</span>
             <span id="analysis-percentage"></span>
           </div>
         </div>
         <div class="analysis-actions">
-          <button id="analyze-folder" class="secondary-button">analyze folder</button>
-          <button id="download-missing" class="primary-button" style="display: none;">download missing files</button>
+          <button id="analyze-folder" class="secondary-button">🔍 CHECK WHAT'S ALREADY DOWNLOADED</button>
+          <button id="open-in-finder" class="primary-button" style="display: none;">📂 OPEN PHOTOS FOLDER</button>
+          <button id="download-missing" class="primary-button" style="display: none;">⬇️ DOWNLOAD MISSING FILES</button>
         </div>
       </div>
 
       <div class="resources-section" style="display: none;">
-        <h2>what we found</h2>
-        <div id="resources-count">scan your photos first to see what's in your account</div>
+        <h2>📋 WHAT WE FOUND IN YOUR ACCOUNT</h2>
+        <div id="resources-count">🔍 Click "SCAN & COUNT" first to see what photos you have</div>
         <div id="resources-stats" style="display: none;">
           <div class="stats-grid">
             <div class="stat-item">
-              <span class="stat-label">total size</span>
+              <span class="stat-label">📊 total size of all photos</span>
               <span id="total-size">0 mb</span>
             </div>
             <div class="stat-item">
-              <span class="stat-label">estimated time</span>
+              <span class="stat-label">⏱️ estimated download time</span>
               <span id="estimated-time">0 min</span>
             </div>
             <div class="stat-item">
-              <span class="stat-label">downloaded</span>
+              <span class="stat-label">✅ already downloaded</span>
               <span id="downloaded-size">0 mb</span>
             </div>
             <div class="stat-item">
-              <span class="stat-label">remaining time</span>
+              <span class="stat-label">⏰ time remaining</span>
               <span id="remaining-time">0 min</span>
             </div>
           </div>
@@ -212,15 +229,14 @@
 
       <div class="log-toggle">
         <button id="toggle-log" class="log-toggle-button">
-          show log
+          ⚙️ show technical details
         </button>
       </div>
 
       <div class="log-section" style="display: none;">
-        <h2>what's happening</h2>
+        <h2>🔧 WHAT'S HAPPENING BEHIND THE SCENES</h2>
         <div class="help-text">
-          this shows you what the tool is doing in real-time.
-          if something goes wrong, check here for error messages.
+          <strong>For nerds only:</strong> This shows technical details about what the app is doing. If something breaks, screenshots of this section help with troubleshooting.
         </div>
         <div id="log-output"></div>
       </div>

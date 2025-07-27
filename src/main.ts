@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { open as openPath } from "@tauri-apps/plugin-opener";
 import { join, documentDir } from "@tauri-apps/api/path";
 import PhotoDatabase, { DatabasePhoto } from './database';
 
@@ -666,6 +667,12 @@ async function analyzeFolder() {
       downloadMissingButton.style.display = 'none';
     }
     
+    // Show open in finder button if we have a download path
+    const openInFinderButton = document.getElementById("open-in-finder") as HTMLButtonElement;
+    if (downloadPath) {
+      openInFinderButton.style.display = 'block';
+    }
+    
     // Show the analysis section
     const analysisSection = document.getElementById("download-folder-status") as HTMLElement;
     analysisSection.style.display = 'block';
@@ -694,6 +701,22 @@ async function analyzeFolder() {
     showToast(`Error analyzing folder: ${error}`, 'error');
   } finally {
     setButtonLoading('analyze-folder', false);
+  }
+}
+
+// Open the download folder in Finder/Explorer
+async function openInFinder() {
+  if (!downloadPath) {
+    showToast("No download folder selected", 'error');
+    return;
+  }
+  
+  try {
+    await openPath(downloadPath);
+    showToast("Opened photos folder", 'success');
+  } catch (error) {
+    logMessage(`Error opening folder: ${error}`);
+    showToast(`Error opening folder: ${error}`, 'error');
   }
 }
 
@@ -1486,6 +1509,7 @@ window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("start-download")?.addEventListener("click", startDownload);
   document.getElementById("cancel-download")?.addEventListener("click", cancelDownload);
   document.getElementById("analyze-folder")?.addEventListener("click", analyzeFolder);
+  document.getElementById("open-in-finder")?.addEventListener("click", openInFinder);
   document.getElementById("download-missing")?.addEventListener("click", downloadMissingFiles);
   document.getElementById("export-metadata")?.addEventListener("click", exportMetadata);
   document.getElementById("toggle-log")?.addEventListener("click", toggleLog);
