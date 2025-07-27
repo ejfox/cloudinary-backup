@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { open as openPath } from "@tauri-apps/plugin-opener";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { join, documentDir } from "@tauri-apps/api/path";
 import PhotoDatabase, { DatabasePhoto } from './database';
 
@@ -244,40 +244,6 @@ function saveDownloadState() {
   localStorage.setItem('cloudinary-download-state', JSON.stringify(stateToSave));
 }
 
-// Load download state from localStorage
-function loadDownloadState(): boolean {
-  const saved = localStorage.getItem('cloudinary-download-state');
-  if (!saved) return false;
-  
-  try {
-    const parsed = JSON.parse(saved);
-    
-    // Check if state is recent (within 24 hours)
-    const hoursSinceLastSave = (Date.now() - parsed.lastSaveTime) / (1000 * 60 * 60);
-    if (hoursSinceLastSave > 24) {
-      localStorage.removeItem('cloudinary-download-state');
-      return false;
-    }
-    
-    downloadState = {
-      downloadedFiles: parsed.downloadedFiles || [],
-      failedFiles: parsed.failedFiles || [],
-      totalFiles: parsed.totalFiles || 0,
-      startTime: parsed.startTime || 0,
-      lastSaveTime: parsed.lastSaveTime || 0
-    };
-    
-    downloadPath = parsed.downloadPath || "";
-    totalBytes = parsed.totalBytes || 0;
-    downloadedBytes = parsed.downloadedBytes || 0;
-    
-    return true;
-  } catch (error) {
-    console.error("Error loading download state:", error);
-    localStorage.removeItem('cloudinary-download-state');
-    return false;
-  }
-}
 
 // Clear download state
 function clearDownloadState() {
@@ -470,12 +436,6 @@ async function downloadWithRetry(resource: CloudinaryResource, maxRetries: numbe
   return false;
 }
 
-// Check if download can be resumed
-function canResumeDownload(): boolean {
-  return downloadState.downloadedFiles.length > 0 && 
-         downloadState.totalFiles > 0 && 
-         downloadPath !== "";
-}
 
 // Analyze download folder for existing files
 async function analyzeDownloadFolder(): Promise<{
