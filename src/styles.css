@@ -372,6 +372,28 @@ button:focus {
   border-color: var(--color-accent);
 }
 
+/* credentials actions */
+.credentials-actions {
+  margin-top: var(--spacing);
+  padding-top: var(--spacing);
+  border-top: 1px solid var(--color-border);
+}
+
+.credentials-actions .secondary-button {
+  background: var(--color-bg);
+  border: 1px solid var(--color-text-secondary);
+  color: var(--color-text-secondary);
+  padding: var(--spacing-small) var(--spacing);
+  font-size: 12px;
+  text-transform: lowercase;
+}
+
+.credentials-actions .secondary-button:hover:not(:disabled) {
+  border-color: var(--color-error);
+  color: var(--color-error);
+  transform: translateY(-1px);
+}
+
 /* progress */
 .progress-section {
   padding: var(--spacing);

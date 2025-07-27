@@ -119,7 +119,7 @@ function loadScanState(): boolean {
     const hoursSinceScan = (Date.now() - parsed.scanTime) / (1000 * 60 * 60);
     if (hoursSinceScan > 1) {
       // Scan is old, ask user if they want to use it
-      const useOldScan = confirm(`Found a previous scan from ${formatTimeAgo(parsed.scanTime)} with ${parsed.resources.length} photos. Use this scan or scan again?`);
+      const useOldScan = confirm(`Found a previous scan from ${formatTimeAgo(parsed.scanTime)} with ${parsed.resources.length} photos.\n\nClick OK to USE the previous scan\nClick Cancel to SCAN AGAIN`);
       if (!useOldScan) {
         localStorage.removeItem('cloudinary-scan-state');
         return false;
@@ -161,6 +161,43 @@ const clearScanState = () => {
     invalidatedResourceCount: 0
   };
 };
+
+// Clear credentials and reset app state
+function clearCredentials() {
+  const confirmClear = confirm(`Are you sure you want to clear all saved credentials and data?\n\nThis will:\n• Delete saved Cloudinary credentials\n• Clear scan history\n• Reset download progress\n• Require re-entering all credentials\n\nClick OK to clear everything\nClick Cancel to keep current data`);
+  
+  if (confirmClear) {
+    // Clear all stored data
+    localStorage.removeItem('cloudinary-backup-credentials-encrypted');
+    localStorage.removeItem('cloudinary-backup-credentials'); // legacy
+    localStorage.removeItem('cloudinary-backup-path');
+    localStorage.removeItem('cloudinary-scan-state');
+    localStorage.removeItem('cloudinary-download-state');
+    
+    // Reset form fields
+    (document.getElementById('cloud-name') as HTMLInputElement).value = '';
+    (document.getElementById('api-key') as HTMLInputElement).value = '';
+    (document.getElementById('api-secret') as HTMLInputElement).value = '';
+    (document.getElementById('download-path') as HTMLInputElement).value = '';
+    
+    // Reset app state
+    allResources = [];
+    downloadPath = "";
+    totalBytes = 0;
+    downloadedBytes = 0;
+    clearScanState();
+    clearDownloadState();
+    
+    // Reset UI
+    showStep(1);
+    document.querySelector(".resources-section")?.setAttribute('style', 'display: none');
+    document.querySelector(".download-folder-status")?.setAttribute('style', 'display: none');
+    
+    logMessage("Cleared all credentials and data - starting fresh");
+    showToast("All credentials and data cleared", 'info');
+    updateButtons();
+  }
+}
 
 // Export to window for debugging (only in development)
 if (typeof window !== 'undefined') {
@@ -447,6 +484,8 @@ async function analyzeDownloadFolder(): Promise<{
   percentage: number;
   existingFileNames: string[];
   missingFileNames: string[];
+  existingBytes: number;
+  missingBytes: number;
 }> {
   if (!downloadPath || allResources.length === 0) {
     return {
@@ -455,13 +494,17 @@ async function analyzeDownloadFolder(): Promise<{
       missingFiles: 0,
       percentage: 0,
       existingFileNames: [],
-      missingFileNames: []
+      missingFileNames: [],
+      existingBytes: 0,
+      missingBytes: 0
     };
   }
 
   const totalFiles = allResources.length;
   const existingFileNames: string[] = [];
   const missingFileNames: string[] = [];
+  let existingBytes = 0;
+  let missingBytes = 0;
 
   for (const resource of allResources) {
     const fileName = getFilenameFromUrl(resource);
@@ -473,14 +516,18 @@ async function analyzeDownloadFolder(): Promise<{
         const fileSize = await invoke("get_file_size", { path: filePath });
         if (fileSize === resource.bytes) {
           existingFileNames.push(fileName);
+          existingBytes += resource.bytes;
         } else {
           missingFileNames.push(fileName);
+          missingBytes += resource.bytes;
         }
       } else {
         missingFileNames.push(fileName);
+        missingBytes += resource.bytes;
       }
     } catch (error) {
       missingFileNames.push(fileName);
+      missingBytes += resource.bytes;
     }
   }
 
@@ -494,7 +541,9 @@ async function analyzeDownloadFolder(): Promise<{
     missingFiles,
     percentage,
     existingFileNames,
-    missingFileNames
+    missingFileNames,
+    existingBytes,
+    missingBytes
   };
 }
 
@@ -1287,27 +1336,48 @@ async function startDownload() {
   downloadCancelled = false;
 
   try {
-    // Check if we can resume an existing download
-    const hasExistingState = loadDownloadState();
     let resourcesToDownload = [...allResources]; // Create copy to avoid modifying original
     
-    if (hasExistingState && canResumeDownload()) {
-      const shouldResume = confirm(`Found an incomplete download with ${downloadState.downloadedFiles.length} files already downloaded. Resume download?`);
+    // Always analyze the folder to get accurate current state
+    const analysis = await analyzeDownloadFolder();
+    
+    if (analysis.existingFiles > 0) {
+      // Show detailed resume dialog
+      const resumeMessage = `📊 Download Status for ${analysis.totalFiles} photos:
+
+✅ Already Downloaded: ${analysis.existingFiles} files (${formatBytes(analysis.existingBytes)})
+⏳ Still Missing: ${analysis.missingFiles} files (${formatBytes(analysis.missingBytes)})
+📈 Progress: ${analysis.percentage.toFixed(1)}% complete
+
+Click OK to RESUME downloading the ${analysis.missingFiles} missing files
+Click Cancel to START OVER (will re-download everything)`;
+
+      const shouldResume = confirm(resumeMessage);
+      
       if (shouldResume) {
-        logMessage(`Resuming download... ${downloadState.downloadedFiles.length} files already completed.`);
-        // Filter out already downloaded files
+        // Resume: only download missing files
         resourcesToDownload = allResources.filter(resource => {
           const fileName = getFilenameFromUrl(resource);
-          return !downloadState.downloadedFiles.includes(fileName);
+          return analysis.missingFileNames.includes(fileName);
         });
-        downloadStartTime = downloadState.startTime;
+        
+        // Set up download state as if we already downloaded the existing files
+        downloadedBytes = analysis.existingBytes;
+        downloadState.downloadedFiles = analysis.existingFileNames;
+        downloadState.totalFiles = analysis.totalFiles;
+        downloadStartTime = Date.now(); // Fresh timer for remaining downloads
+        
+        logMessage(`Resuming download: ${analysis.existingFiles} already downloaded, ${resourcesToDownload.length} remaining`);
         showToast(`Resuming download (${resourcesToDownload.length} files remaining)`, 'info');
       } else {
+        // Start over: download everything
         clearDownloadState();
         downloadedBytes = 0;
         downloadStartTime = Date.now();
+        logMessage(`Starting fresh download of all ${allResources.length} files`);
       }
     } else {
+      // No existing files, start fresh
       clearDownloadState();
       downloadedBytes = 0;
       downloadStartTime = Date.now();
@@ -1419,6 +1489,7 @@ window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("download-missing")?.addEventListener("click", downloadMissingFiles);
   document.getElementById("export-metadata")?.addEventListener("click", exportMetadata);
   document.getElementById("toggle-log")?.addEventListener("click", toggleLog);
+  document.getElementById("clear-credentials")?.addEventListener("click", clearCredentials);
   
   // Add input listeners for step progression
   document.getElementById("cloud-name")?.addEventListener("input", updateButtons);
